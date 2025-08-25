@@ -1,0 +1,10 @@
+#VSCode
+.vscode/
+.history/
+*.code-workspace
+
+#macOS
+.DS_Store
+
+#supabase
+supabase/seed.sql
