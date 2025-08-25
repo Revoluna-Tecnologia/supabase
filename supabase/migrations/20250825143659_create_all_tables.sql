@@ -7108,7 +7108,7 @@ CREATE TRIGGER checkin_checkout_1_validar_timing BEFORE INSERT ON public.checkin
 
 CREATE TRIGGER checkin_checkout_2_validar_timing BEFORE UPDATE ON public.checkin_checkout FOR EACH ROW EXECUTE FUNCTION validate_checkout_timing();
 
-CREATE TRIGGER checkin_checkout_3_send_notification AFTER INSERT ON public.checkin_checkout_nofitications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
+-- CREATE TRIGGER checkin_checkout_3_send_notification AFTER INSERT ON public.checkin_checkout_nofitications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
 
 CREATE TRIGGER trigger_grades_updated_at BEFORE UPDATE ON public.grades FOR EACH ROW EXECUTE FUNCTION handle_grades_updated_at();
 
