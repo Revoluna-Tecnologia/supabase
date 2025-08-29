@@ -15,7 +15,17 @@ AS $function$DECLARE
     -- Adicionar variáveis para timestamps
     vaga_inicio_ts timestamp;
     vaga_fim_ts timestamp;
+    current_vaga_id uuid;
 BEGIN
+    -- SANITIZAÇÃO: Converter strings vazias em NULL para UUIDs
+    IF NEW.vagas_id::text = '' THEN
+        NEW.vagas_id := NULL;
+    END IF;
+    
+    IF NEW.medico_id::text = '' THEN
+        NEW.medico_id := NULL;
+    END IF;
+    
     -- VERIFICAÇÃO DE AUTENTICAÇÃO: Só usuários autenticados podem prosseguir
     IF auth.role() != 'authenticated' THEN
         RAISE EXCEPTION 'ACESSO NEGADO: Apenas usuários autenticados podem se candidatar a vagas';
@@ -23,6 +33,20 @@ BEGIN
     
     -- Verificar o role atual do usuário
     current_user_id := auth.uid();
+    
+    -- VALIDAÇÃO: Verificar se o UUID do usuário é válido
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'USUÁRIO INVÁLIDO: ID do usuário não encontrado';
+    END IF;
+    
+    -- VALIDAÇÃO: Verificar se os UUIDs da candidatura são válidos
+    IF NEW.vagas_id IS NULL THEN
+        RAISE EXCEPTION 'VAGA INVÁLIDA: ID da vaga não pode ser nulo';
+    END IF;
+    
+    IF NEW.medico_id IS NULL THEN
+        RAISE EXCEPTION 'MÉDICO INVÁLIDO: ID do médico não pode ser nulo';
+    END IF;
     
     -- Verificar se o usuário existe no user_profile
     SELECT role INTO current_user_role
@@ -100,21 +124,33 @@ BEGIN
             LIMIT 1
         )
     INTO conflito_encontrado, vaga_conflitante_info;
-    
+           
     -- Bloquear se houver conflito de horário
-  IF conflito_encontrado THEN
-        -- 1. Deletar todas as candidaturas pendentes desta vaga
-        DELETE FROM candidaturas 
-        WHERE vagas_id = NEW.vagas_id 
-        AND candidatura_status IN ('PENDENTE', 'EM_ANALISE');
+    IF conflito_encontrado THEN
+        -- VAGA AUTOMÁTICA: Se há conflito, a vaga não deveria ter sido criada
+        -- Vamos deletar a vaga e suas candidaturas para manter integridade
+         
+        -- 1. Verificar se a vaga ainda existe antes de deletar
+        IF EXISTS (SELECT 1 FROM vagas WHERE vagas_id = NEW.vagas_id) THEN
+            -- 2. Deletar todas as candidaturas pendentes desta vaga primeiro
+            
+            DELETE FROM candidaturas 
+            WHERE vagas_id = NEW.vagas_id 
+            AND candidatura_status IN ('PENDENTE', 'EM_ANALISE');
         
-        -- 2. Deletar a vaga
-        DELETE FROM vagas 
-        WHERE vagas_id = NEW.vagas_id;
+            -- 3. Deletar a vaga (que foi criada automaticamente para este médico)
+            current_vaga_id := NEW.vagas_id;
+            DELETE FROM vagas 
+            WHERE vagas_id = NEW.vagas_id;
+
+            
+            -- 4. Log da ação para auditoria
+            RAISE NOTICE 'VAGA AUTOMÁTICA REMOVIDA: Vaga % deletada devido a conflito de horário para médico % -->> %', 
+                NEW.vagas_id, NEW.medico_id, current_vaga_id;
+        END IF;
         
-        -- 3. Cancelar a inserção da candidatura atual
-        RAISE EXCEPTION 'Conflito de horário detectado. % | % - % - %',
-vaga_conflitante_info, vaga_data, vaga_inicio, vaga_fim;
+        -- 5. Cancelar a inserção da candidatura atual
+        RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO: Vaga automática removida: ';
     END IF;
     
     -- Se chegou até aqui, usuário está autenticado e validações passaram
