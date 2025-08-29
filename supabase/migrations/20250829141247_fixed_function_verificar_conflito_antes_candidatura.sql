@@ -56,7 +56,7 @@ BEGIN
     END IF;
     
     -- VERIFICAÇÃO 1: Impedir candidatura em vagas com data passada
-    IF vaga_data < CURRENT_DATE THEN
+    IF vaga_data < CURRENT_DATE AND current_user_role ='free' THEN
         RAISE EXCEPTION 'CANDIDATURA BLOQUEADA: Não é possível se candidatar em vaga com data passada. Data da vaga: %', vaga_data;
     END IF;
     
@@ -113,8 +113,8 @@ BEGIN
         WHERE vagas_id = NEW.vagas_id;
         
         -- 3. Cancelar a inserção da candidatura atual
-        RAISE EXCEPTION 'VAGA ELIMINADA: Conflito de horário detectado. % | Vaga % das % às % foi removida do sistema', 
-            vaga_conflitante_info, vaga_data, vaga_inicio, vaga_fim;
+        RAISE EXCEPTION 'Conflito de horário detectado. % | % - % - %',
+vaga_conflitante_info, vaga_data, vaga_inicio, vaga_fim;
     END IF;
     
     -- Se chegou até aqui, usuário está autenticado e validações passaram
