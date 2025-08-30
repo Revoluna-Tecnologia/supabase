@@ -127,30 +127,7 @@ BEGIN
            
     -- Bloquear se houver conflito de horário
     IF conflito_encontrado THEN
-        -- VAGA AUTOMÁTICA: Se há conflito, a vaga não deveria ter sido criada
-        -- Vamos deletar a vaga e suas candidaturas para manter integridade
-         
-        -- 1. Verificar se a vaga ainda existe antes de deletar
-        IF EXISTS (SELECT 1 FROM vagas WHERE vagas_id = NEW.vagas_id) THEN
-            -- 2. Deletar todas as candidaturas pendentes desta vaga primeiro
-            
-            DELETE FROM candidaturas 
-            WHERE vagas_id = NEW.vagas_id 
-            AND candidatura_status IN ('PENDENTE', 'EM_ANALISE');
-        
-            -- 3. Deletar a vaga (que foi criada automaticamente para este médico)
-            current_vaga_id := NEW.vagas_id;
-            DELETE FROM vagas 
-            WHERE vagas_id = NEW.vagas_id;
-
-            
-            -- 4. Log da ação para auditoria
-            RAISE NOTICE 'VAGA AUTOMÁTICA REMOVIDA: Vaga % deletada devido a conflito de horário para médico % -->> %', 
-                NEW.vagas_id, NEW.medico_id, current_vaga_id;
-        END IF;
-        
-        -- 5. Cancelar a inserção da candidatura atual
-        RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO: Vaga automática removida: ';
+        RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO';
     END IF;
     
     -- Se chegou até aqui, usuário está autenticado e validações passaram
