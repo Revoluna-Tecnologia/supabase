@@ -7,4 +7,4 @@
 .DS_Store
 
 #supabase
-supabase/seed.sql
+#supabase/seed.sql
