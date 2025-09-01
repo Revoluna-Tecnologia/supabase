@@ -1,16 +1,4 @@
--- Delete the existing migration with incorrect syntax
-DELETE FROM supabase_migrations.schema_migrations 
-WHERE version = '20250901204541';
-
--- Insert the complete migration into schema_migrations table
-INSERT INTO supabase_migrations.schema_migrations (
-    version,
-    name,
-    statements
-) VALUES (
-    '20250901204541',
-    'create_all_tables_and_policies',
-    ARRAY[$MIGRATION$create extension if not exists "http" with schema "extensions";
+create extension if not exists "http" with schema "extensions";
 
 -- Create supabase_functions schema if it doesn't exist
 create schema if not exists supabase_functions;
@@ -7040,5 +7028,3 @@ CREATE TRIGGER notifications_1_send_notification AFTER INSERT ON public.notifica
 CREATE TRIGGER vagas_1_reprovar_candidaturas_ao_cancelar AFTER UPDATE OF vagas_status ON public.vagas FOR EACH ROW EXECUTE FUNCTION atualizar_candidaturas_vaga_cancelada();
 
 
-$MIGRATION$]::text[]
-);
