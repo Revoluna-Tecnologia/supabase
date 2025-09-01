@@ -7023,7 +7023,7 @@ CREATE TRIGGER especialidades_1_setar_coluna_nome BEFORE INSERT OR UPDATE ON pub
 
 CREATE TRIGGER medicos_1_cleanup_precadastro AFTER INSERT ON public.medicos FOR EACH ROW EXECUTE FUNCTION cleanup_medicos_precadastro();
 
--- CREATE TRIGGER notifications_1_send_notification AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
+CREATE TRIGGER notifications_1_send_notification AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
 
 CREATE TRIGGER vagas_1_reprovar_candidaturas_ao_cancelar AFTER UPDATE OF vagas_status ON public.vagas FOR EACH ROW EXECUTE FUNCTION atualizar_candidaturas_vaga_cancelada();
 
