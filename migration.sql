@@ -18,24 +18,9 @@ create schema if not exists supabase_functions;
 -- Grant necessary permissions
 grant usage on schema supabase_functions to postgres, anon, authenticated, service_role;
 
--- Create http_request function in supabase_functions schema (placeholder for Supabase Edge Functions integration)
-create or replace function supabase_functions.http_request(
-    url text,
-    method text,
-    headers jsonb,
-    payload jsonb,
-    timeout_ms integer
-)
-returns jsonb
-language plpgsql
-security definer
-as $$
-begin
-    -- This is a placeholder function for local development
-    -- In production, Supabase provides this function for Edge Functions integration
-    return jsonb_build_object('status', 'success', 'message', 'Edge function call simulated');
-end;
-$$;
+-- Note: The http_request function is provided by Supabase in production
+-- This trigger will be commented out for local development
+-- It requires Supabase Edge Functions to be properly configured
 
 create extension if not exists "pg_trgm" with schema "public" version '1.6';
 
@@ -7035,7 +7020,8 @@ CREATE TRIGGER especialidades_1_setar_coluna_nome BEFORE INSERT OR UPDATE ON pub
 
 CREATE TRIGGER medicos_1_cleanup_precadastro AFTER INSERT ON public.medicos FOR EACH ROW EXECUTE FUNCTION cleanup_medicos_precadastro();
 
-CREATE TRIGGER notifications_1_send_notification AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
+-- Commented out: This trigger requires Supabase Edge Functions to be configured in production
+-- CREATE TRIGGER notifications_1_send_notification AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
 
 CREATE TRIGGER vagas_1_reprovar_candidaturas_ao_cancelar AFTER UPDATE OF vagas_status ON public.vagas FOR EACH ROW EXECUTE FUNCTION atualizar_candidaturas_vaga_cancelada();
 
