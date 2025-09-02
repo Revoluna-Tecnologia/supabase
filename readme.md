@@ -133,3 +133,57 @@ Para sincronizar o seu ambiente local com o projeto remoto no Supabase Cloud:
     npx supabase link --project-ref <project-id>
     ```
     Você pode encontrar o `<project-id>` no URL do seu projeto no painel do Supabase (ex: `https://app.supabase.com/project/<project-id>`).
+## Fluxo de Branches e Ambientes
+
+Este projeto segue uma estratégia de versionamento e deploy baseada em **branches Git** alinhadas com os diferentes **ambientes Supabase**: Local, Staging e Produção.  
+
+### Estrutura de Branches
+
+- **`main`**  
+  Branch principal do projeto.  
+  - Contém apenas código validado e pronto para produção.  
+  - Os merges para `main` disparam deploys para o ambiente **Produção (PROD)** no Supabase.  
+
+- **`develop`**  
+  Branch de desenvolvimento contínuo.  
+  - Utilizada para integrar novas features já testadas localmente.  
+  - Os merges para `develop` disparam deploys no ambiente de **Staging**, usado para testes integrados e QA.  
+
+- **`feature/*`**  
+  Branches temporárias para desenvolvimento de novas funcionalidades ou correções.  
+  - Criadas a partir de `develop`.  
+  - Testadas localmente com o ambiente **LOCAL** do Supabase.  
+  - Após concluídas, são integradas de volta em `develop`.  
+
+### Ambientes Supabase
+
+- **LOCAL**  
+  Ambiente de desenvolvimento rodando na máquina do desenvolvedor com Supabase CLI.  
+  Usado para testes rápidos antes de integrar no projeto.  
+
+- **STAGING**  
+  Ambiente de homologação (QA).  
+  Permite validar novas funcionalidades em conjunto antes do deploy em produção.  
+
+- **PROD (Produção)**  
+  Ambiente final utilizado pelos usuários.  
+  Apenas o código aprovado em `main` é publicado aqui.  
+
+---
+
+### Fluxo Resumido
+
+1. Criar uma branch `feature/nome-da-feature` a partir de `develop`.  
+2. Desenvolver e testar localmente com **Supabase Local**.  
+3. Fazer merge da feature em `develop`.  
+   - Deploy automático para **Staging**.  
+4. Após validação, fazer merge de `develop` em `main`.  
+   - Deploy automático para **Produção**.  
+
+---
+
+### Diagrama do Fluxo (Imagem)
+
+![Fluxo de Branches e Ambientes](./docs/fluxo-branches.png)
+
+
