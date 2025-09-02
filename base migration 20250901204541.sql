@@ -1,7 +1,3 @@
--- Delete the existing migration with incorrect syntax
-DELETE FROM supabase_migrations.schema_migrations 
-WHERE version = '20250901204541';
-
 -- Insert the complete migration into schema_migrations table
 INSERT INTO supabase_migrations.schema_migrations (
     version,
