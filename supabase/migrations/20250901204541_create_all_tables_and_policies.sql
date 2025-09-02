@@ -4262,7 +4262,9 @@ create or replace view "public"."vw_relatorio_folhapagamento" as  SELECT v.vagas
   WHERE (c.candidatura_status = 'APROVADO'::text);
 
 
-create or replace view "public"."vw_todas_candidaturas" as  SELECT ((m.medico_primeironome || ' '::text) || m.medico_sobrenome) AS nome_medico,
+create or replace view "public"."vw_todas_candidaturas"
+with (security_invoker = on) as
+SELECT ((m.medico_primeironome || ' '::text) || m.medico_sobrenome) AS nome_medico,
     m.medico_crm AS crm_medico,
     h.hospital_nome AS nome_hospital,
     v.vagas_data AS data_plantao,
@@ -4287,14 +4289,18 @@ create or replace view "public"."vw_todas_candidaturas" as  SELECT ((m.medico_pr
   ORDER BY v.vagas_data, v.vagas_horainicio;
 
 
-create or replace view "public"."vw_usuarios_por_dia" as  SELECT date(users.created_at) AS data,
+create or replace view "public"."vw_usuarios_por_dia"
+with (security_invoker = on) as
+SELECT date(users.created_at) AS data,
     count(*) AS total
    FROM auth.users
   GROUP BY (date(users.created_at))
   ORDER BY (date(users.created_at));
 
 
-create or replace view "public"."vw_vagas_candidaturas" as  SELECT row_number() OVER (ORDER BY combined_data.vagas_id, combined_data.effective_medico_id, combined_data.candidaturas_id) AS idx,
+create or replace view "public"."vw_vagas_candidaturas"
+with (security_invoker = on) as
+SELECT row_number() OVER (ORDER BY combined_data.vagas_id, combined_data.effective_medico_id, combined_data.candidaturas_id) AS idx,
     combined_data.vagas_id,
     combined_data.vagas_data,
     combined_data.vagas_createdate,
@@ -4449,13 +4455,17 @@ create or replace view "public"."vw_vagas_candidaturas" as  SELECT row_number() 
              LEFT JOIN pagamentos pg ON ((pg.candidaturas_id = c.candidaturas_id)))) combined_data;
 
 
-create or replace view "public"."vw_vagas_dias_contagem" as  SELECT v.vagas_id,
+create or replace view "public"."vw_vagas_dias_contagem"
+with (security_invoker = on) as
+SELECT v.vagas_id,
     (CURRENT_DATE - (v.vagas_createdate)::date) AS dias_desde_criacao,
     (v.vagas_data - CURRENT_DATE) AS dias_ate_vaga
    FROM vagas v;
 
 
-create materialized view "public"."vw_vagas_disponiveis" as  SELECT v.vagas_id,
+create materialized view "public"."vw_vagas_disponiveis"
+with (security_invoker = on) as
+SELECT v.vagas_id,
     v.vagas_data,
     v.vagas_horainicio,
     v.vagas_horafim,
@@ -4476,7 +4486,9 @@ create materialized view "public"."vw_vagas_disponiveis" as  SELECT v.vagas_id,
   WHERE ((v.vagas_status)::text = 'DISPONIVEL'::text);
 
 
-create or replace view "public"."vw_vagas_especialidade" as  SELECT v.vagas_id,
+create or replace view "public"."vw_vagas_especialidade"
+with (security_invoker = on) as
+SELECT v.vagas_id,
     v.vaga_especialidade,
     e.especialidade_id,
     e.especialidade_nome
@@ -4484,7 +4496,9 @@ create or replace view "public"."vw_vagas_especialidade" as  SELECT v.vagas_id,
      JOIN especialidades e ON ((v.vaga_especialidade = e.especialidade_id)));
 
 
-create or replace view "public"."vw_vagas_grade_info" as  SELECT v.vagas_id,
+create or replace view "public"."vw_vagas_grade_info"
+with (security_invoker = on) as
+SELECT v.vagas_id,
     v.grade_id,
     g.nome AS grade_nome,
     g.cor AS grade_cor
@@ -4492,7 +4506,9 @@ create or replace view "public"."vw_vagas_grade_info" as  SELECT v.vagas_id,
      LEFT JOIN grades g ON ((v.grade_id = g.id)));
 
 
-create or replace view "public"."vw_vagas_por_mes" as  SELECT date_trunc('month'::text, (vagas_completo.vagas_data)::timestamp without time zone) AS mes,
+create or replace view "public"."vw_vagas_por_mes"
+with (security_invoker = on) as
+SELECT date_trunc('month'::text, (vagas_completo.vagas_data)::timestamp without time zone) AS mes,
     count(vagas_completo.vagas_id) AS total_vagas
    FROM vagas_completo
   GROUP BY (date_trunc('month'::text, (vagas_completo.vagas_data)::timestamp without time zone))
