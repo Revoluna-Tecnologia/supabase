@@ -50,6 +50,7 @@ Guarde estas informações, pois serão necessárias para conectar a sua aplica�
 ## Gestão da Base de Dados
 
 **Nota:** Para algumas operações avançadas, certifique-se de que o seu projeto local está conectado ao projeto remoto através do comando:
+
 ```bash
 npx supabase link --project-ref <project-id>
 ```
