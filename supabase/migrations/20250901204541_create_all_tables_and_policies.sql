@@ -4463,8 +4463,7 @@ SELECT v.vagas_id,
    FROM vagas v;
 
 
-create materialized view "public"."vw_vagas_disponiveis"
-with (security_invoker = on) as
+create materialized view "public"."vw_vagas_disponiveis" as
 SELECT v.vagas_id,
     v.vagas_data,
     v.vagas_horainicio,
