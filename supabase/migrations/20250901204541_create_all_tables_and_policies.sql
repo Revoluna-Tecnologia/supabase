@@ -3733,7 +3733,9 @@ AS $function$update auth.users
    where id = user_id;$function$
 ;
 
-create or replace view "public"."vagas_completo" as  SELECT v.vagas_id,
+create or replace view "public"."vagas_completo"
+with (security_invoker = on)
+as  SELECT v.vagas_id,
     v.vagas_createdate,
     v.vagas_data,
     v.vagas_horainicio,
@@ -4103,7 +4105,9 @@ END;
 $function$
 ;
 
-create or replace view "public"."vw_candidaturas_pendentes" as  SELECT ((m.medico_primeironome || ' '::text) || m.medico_sobrenome) AS nome_medico,
+create or replace view "public"."vw_candidaturas_pendentes"
+with (security_invoker = on)
+as  SELECT ((m.medico_primeironome || ' '::text) || m.medico_sobrenome) AS nome_medico,
     m.medico_crm AS crm_medico,
     h.hospital_nome AS nome_hospital,
     v.vagas_data AS data_plantao,
@@ -4129,14 +4133,18 @@ create or replace view "public"."vw_candidaturas_pendentes" as  SELECT ((m.medic
   ORDER BY v.vagas_data, v.vagas_horainicio;
 
 
-create or replace view "public"."vw_candidaturas_por_dia" as  SELECT date(candidaturas.candidatos_createdate) AS data,
+create or replace view "public"."vw_candidaturas_por_dia"
+with (security_invoker = on)
+as  SELECT date(candidaturas.candidatos_createdate) AS data,
     count(*) AS total
    FROM candidaturas
   GROUP BY (date(candidaturas.candidatos_createdate))
   ORDER BY (date(candidaturas.candidatos_createdate));
 
 
-create or replace view "public"."vw_dashboard_metrics" as  WITH metricas_vagas AS (
+create or replace view "public"."vw_dashboard_metrics"
+with (security_invoker = on)
+as  WITH metricas_vagas AS (
          SELECT count(*) FILTER (WHERE ((vagas.vagas_status)::text = 'aberta'::text)) AS total_vagas_ativas,
             count(*) FILTER (WHERE (((vagas.vagas_status)::text = 'aberta'::text) AND (vagas.vagas_createdate >= (now() - '1 mon'::interval)) AND (vagas.vagas_createdate < now()))) AS vagas_ultimo_mes
            FROM vagas
@@ -4201,19 +4209,25 @@ create or replace view "public"."vw_dashboard_metrics" as  WITH metricas_vagas A
     metricas_documentos md;
 
 
-create or replace view "public"."vw_distribuicao_especialidades" as  SELECT vagas_completo.especialidade_nome AS especialidade,
+create or replace view "public"."vw_distribuicao_especialidades"
+with (security_invoker = on)
+as  SELECT vagas_completo.especialidade_nome AS especialidade,
     count(*) AS total
    FROM vagas_completo
   GROUP BY vagas_completo.especialidade_nome
   ORDER BY (count(*)) DESC;
 
 
-create or replace view "public"."vw_grupo_nome" as  SELECT grupo.grupo_id,
+create or replace view "public"."vw_grupo_nome"
+with (security_invoker = on)
+as  SELECT grupo.grupo_id,
     grupo.grupo_nome
    FROM grupo;
 
 
-create or replace view "public"."vw_ocupacao_plantoes" as  WITH dias AS (
+create or replace view "public"."vw_ocupacao_plantoes"
+with (security_invoker = on)
+as  WITH dias AS (
          SELECT (generate_series((CURRENT_DATE - '15 days'::interval), (CURRENT_DATE + '15 days'::interval), '1 day'::interval))::date AS data
         ), vagas_por_dia AS (
          SELECT v.vagas_data,
@@ -4238,7 +4252,9 @@ create or replace view "public"."vw_ocupacao_plantoes" as  WITH dias AS (
   ORDER BY d.data;
 
 
-create or replace view "public"."vw_relatorio_folhapagamento" as  SELECT v.vagas_id,
+create or replace view "public"."vw_relatorio_folhapagamento"
+with (security_invoker = on)
+as  SELECT v.vagas_id,
     v.vagas_data,
     v.vagas_datapagamento,
     v.vagas_valor,
