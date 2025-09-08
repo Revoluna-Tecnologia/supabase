@@ -1,23 +1,21 @@
--- =============================================
--- SISTEMA DE PAGINAÇÃO PARA TABELA VAGAS
--- =============================================
-
--- Função principal para buscar vagas com paginação e filtros
 CREATE OR REPLACE FUNCTION get_vagas_paginated(
     page_number integer DEFAULT 1,
     page_size integer DEFAULT 10,
-    filtro_status text DEFAULT NULL,
-    filtro_hospital_id uuid DEFAULT NULL,
-    filtro_especialidade_id uuid DEFAULT NULL,
-    filtro_setor_id uuid DEFAULT NULL,
-    filtro_data_inicio date DEFAULT NULL,
-    filtro_data_fim date DEFAULT NULL,
-    filtro_valor_min numeric DEFAULT NULL,
-    filtro_valor_max numeric DEFAULT NULL,
-    filtro_periodo_id uuid DEFAULT NULL,
-    filtro_tipo_id uuid DEFAULT NULL,
-    filtro_grupo_id uuid DEFAULT NULL,
-    filtro_busca_texto text DEFAULT NULL
+    hospital_ids uuid[] DEFAULT NULL,
+    specialty_ids uuid[] DEFAULT NULL,
+    sector_ids uuid[] DEFAULT NULL,
+    start_date date DEFAULT NULL,
+    end_date date DEFAULT NULL,
+    min_value numeric DEFAULT NULL,
+    max_value numeric DEFAULT NULL,
+    period_ids uuid[] DEFAULT NULL,
+    type_ids uuid[] DEFAULT NULL,
+    group_ids uuid[] DEFAULT NULL,
+    search_text text DEFAULT NULL,
+    doctor_ids uuid[] DEFAULT NULL,
+    application_status_filter text[] DEFAULT NULL, -- Valores: ['PENDENTE', 'APROVADO', 'REPROVADO']
+    job_status_filter text[] DEFAULT NULL, -- Valores: ['aberta', 'fechada', 'cancelada', 'anunciada']
+    grade_ids uuid[] DEFAULT NULL
 )
 RETURNS TABLE(
     data jsonb,
@@ -33,7 +31,6 @@ DECLARE
     total_count bigint;
     offset_value integer;
 BEGIN
-    -- Validar parâmetros
     validated_page := CASE WHEN page_number < 1 THEN 1 ELSE page_number END;
     validated_size := CASE 
         WHEN page_size < 1 THEN 10
@@ -43,54 +40,49 @@ BEGIN
     
     offset_value := (validated_page - 1) * validated_size;
     
-    -- Contar total de vagas únicas (aplicando filtros)
     WITH vagas_filtradas AS (
         SELECT DISTINCT v.vagas_id
         FROM vw_vagas_candidaturas v
         WHERE 1=1
-            -- Filtro por status
-            AND (filtro_status IS NULL OR v.vagas_status = filtro_status)
-            -- Filtro por hospital
-            AND (filtro_hospital_id IS NULL OR v.hospital_id = filtro_hospital_id)
-            -- Filtro por especialidade
-            AND (filtro_especialidade_id IS NULL OR v.especialidade_id = filtro_especialidade_id)
-            -- Filtro por setor
-            AND (filtro_setor_id IS NULL OR v.setor_id = filtro_setor_id)
-            -- Filtro por período
-            AND (filtro_periodo_id IS NULL OR v.vagas_periodo = filtro_periodo_id)
-            -- Filtro por tipo
-            AND (filtro_tipo_id IS NULL OR v.vagas_tipo = filtro_tipo_id)
-            -- Filtro por grupo
-            AND (filtro_grupo_id IS NULL OR v.grupo_id = filtro_grupo_id)
-            -- Filtro por data (entre data_inicio e data_fim)
-            AND (filtro_data_inicio IS NULL OR v.vagas_data >= filtro_data_inicio)
-            AND (filtro_data_fim IS NULL OR v.vagas_data <= filtro_data_fim)
-            -- Filtro por valor (entre valor_min e valor_max)
-            AND (filtro_valor_min IS NULL OR v.vagas_valor >= filtro_valor_min)
-            AND (filtro_valor_max IS NULL OR v.vagas_valor <= filtro_valor_max)
-            -- Filtro por texto (busca em hospital, especialidade, observações)
+            AND (hospital_ids IS NULL OR v.hospital_id = ANY(hospital_ids))
+            AND (specialty_ids IS NULL OR v.especialidade_id = ANY(specialty_ids))
+            AND (sector_ids IS NULL OR v.setor_id = ANY(sector_ids))
+            AND (period_ids IS NULL OR v.vagas_periodo = ANY(period_ids))
+            AND (type_ids IS NULL OR v.vagas_tipo = ANY(type_ids))
+            AND (group_ids IS NULL OR v.grupo_id = ANY(group_ids))
+            AND (start_date IS NULL OR v.vagas_data >= start_date)
+            AND (end_date IS NULL OR v.vagas_data <= end_date)
+            AND (min_value IS NULL OR v.vagas_valor >= min_value)
+            AND (max_value IS NULL OR v.vagas_valor <= max_value)
+            -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+            AND (doctor_ids IS NULL OR v.medico_id = ANY(doctor_ids))
+            -- Filtro por status das candidaturas
+            AND (application_status_filter IS NULL OR v.candidatura_status = ANY(application_status_filter))
+            -- Filtro por status das vagas
+            AND (job_status_filter IS NULL OR v.vagas_status = ANY(job_status_filter))
+            -- Filtro por grades
+            AND (grade_ids IS NULL OR v.grade_id = ANY(grade_ids))
             AND (
-                filtro_busca_texto IS NULL OR 
-                v.hospital_nome ILIKE '%' || filtro_busca_texto || '%' OR
-                v.especialidade_nome ILIKE '%' || filtro_busca_texto || '%' OR
-                v.vagas_observacoes ILIKE '%' || filtro_busca_texto || '%' OR
-                v.setor_nome ILIKE '%' || filtro_busca_texto || '%'
+                search_text IS NULL OR 
+                v.hospital_nome ILIKE '%' || search_text || '%' OR
+                v.especialidade_nome ILIKE '%' || search_text || '%' OR
+                v.vagas_observacoes ILIKE '%' || search_text || '%' OR
+                v.setor_nome ILIKE '%' || search_text || '%'
             )
     )
     SELECT COUNT(*) INTO total_count FROM vagas_filtradas;
     
-    -- Retornar vagas agrupadas com suas candidaturas
     RETURN QUERY
     WITH vagas_agrupadas AS (
         SELECT 
             v.vagas_id,
-            -- Dados da vaga (pegar qualquer um já que são iguais por vagas_id)
             (array_agg(v.vagas_data))[1] as vagas_data,
             (array_agg(v.vagas_horainicio))[1] as vagas_horainicio,
             (array_agg(v.vagas_horafim))[1] as vagas_horafim,
             (array_agg(v.vagas_valor))[1] as vagas_valor,
             (array_agg(v.vagas_status))[1] as vagas_status,
             (array_agg(v.vagas_observacoes))[1] as vagas_observacoes,
+            (array_agg(v.vagas_datapagamento))[1] as vagas_datapagamento,
             (array_agg(v.total_candidaturas))[1] as total_candidaturas,
             (array_agg(v.vagas_createdate))[1] as vagas_createdate,
             (array_agg(v.vagas_periodo))[1] as vagas_periodo,
@@ -117,7 +109,6 @@ BEGIN
             (array_agg(v.grade_id))[1] as grade_id,
             (array_agg(v.grade_nome))[1] as grade_nome,
             (array_agg(v.grade_cor))[1] as grade_cor,
-            -- Array com TODAS as candidaturas desta vaga
             array_agg(
                 CASE 
                     WHEN v.candidaturas_id IS NOT NULL THEN
@@ -141,24 +132,30 @@ BEGIN
             ) FILTER (WHERE v.candidaturas_id IS NOT NULL) as candidaturas_list
         FROM vw_vagas_candidaturas v
         WHERE 1=1
-            -- Aplicar os mesmos filtros da contagem
-            AND (filtro_status IS NULL OR v.vagas_status = filtro_status)
-            AND (filtro_hospital_id IS NULL OR v.hospital_id = filtro_hospital_id)
-            AND (filtro_especialidade_id IS NULL OR v.especialidade_id = filtro_especialidade_id)
-            AND (filtro_setor_id IS NULL OR v.setor_id = filtro_setor_id)
-            AND (filtro_periodo_id IS NULL OR v.vagas_periodo = filtro_periodo_id)
-            AND (filtro_tipo_id IS NULL OR v.vagas_tipo = filtro_tipo_id)
-            AND (filtro_grupo_id IS NULL OR v.grupo_id = filtro_grupo_id)
-            AND (filtro_data_inicio IS NULL OR v.vagas_data >= filtro_data_inicio)
-            AND (filtro_data_fim IS NULL OR v.vagas_data <= filtro_data_fim)
-            AND (filtro_valor_min IS NULL OR v.vagas_valor >= filtro_valor_min)
-            AND (filtro_valor_max IS NULL OR v.vagas_valor <= filtro_valor_max)
+            AND (hospital_ids IS NULL OR v.hospital_id = ANY(hospital_ids))
+            AND (specialty_ids IS NULL OR v.especialidade_id = ANY(specialty_ids))
+            AND (sector_ids IS NULL OR v.setor_id = ANY(sector_ids))
+            AND (period_ids IS NULL OR v.vagas_periodo = ANY(period_ids))
+            AND (type_ids IS NULL OR v.vagas_tipo = ANY(type_ids))
+            AND (group_ids IS NULL OR v.grupo_id = ANY(group_ids))
+            AND (start_date IS NULL OR v.vagas_data >= start_date)
+            AND (end_date IS NULL OR v.vagas_data <= end_date)
+            AND (min_value IS NULL OR v.vagas_valor >= min_value)
+            AND (max_value IS NULL OR v.vagas_valor <= max_value)
+            -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+            AND (doctor_ids IS NULL OR v.medico_id = ANY(doctor_ids))
+            -- Filtro por status das candidaturas
+            AND (application_status_filter IS NULL OR v.candidatura_status = ANY(application_status_filter))
+            -- Filtro por status das vagas
+            AND (job_status_filter IS NULL OR v.vagas_status = ANY(job_status_filter))
+            -- Filtro por grades
+            AND (grade_ids IS NULL OR v.grade_id = ANY(grade_ids))
             AND (
-                filtro_busca_texto IS NULL OR 
-                v.hospital_nome ILIKE '%' || filtro_busca_texto || '%' OR
-                v.especialidade_nome ILIKE '%' || filtro_busca_texto || '%' OR
-                v.vagas_observacoes ILIKE '%' || filtro_busca_texto || '%' OR
-                v.setor_nome ILIKE '%' || filtro_busca_texto || '%'
+                search_text IS NULL OR 
+                v.hospital_nome ILIKE '%' || search_text || '%' OR
+                v.especialidade_nome ILIKE '%' || search_text || '%' OR
+                v.vagas_observacoes ILIKE '%' || search_text || '%' OR
+                v.setor_nome ILIKE '%' || search_text || '%'
             )
         GROUP BY v.vagas_id
         ORDER BY (array_agg(v.vagas_createdate))[1] DESC
@@ -176,6 +173,7 @@ BEGIN
                     'vagas_valor', v.vagas_valor,
                     'vagas_status', v.vagas_status,
                     'vagas_observacoes', v.vagas_observacoes,
+                    'vagas_datapagamento', v.vagas_datapagamento,
                     'total_candidaturas', v.total_candidaturas,
                     'vagas_createdate', v.vagas_createdate,
                     'vagas_periodo', v.vagas_periodo,
@@ -241,16 +239,6 @@ BEGIN
 END;
 $$;
 
--- Índices para otimização da view vw_vagas_candidaturas
-CREATE INDEX IF NOT EXISTS idx_vagas_pagination ON vagas(vagas_createdate DESC, vagas_id);
-CREATE INDEX IF NOT EXISTS idx_vagas_status_data ON vagas(vagas_status, vagas_data);
-CREATE INDEX IF NOT EXISTS idx_vagas_especialidade_status ON vagas(vaga_especialidade, vagas_status);
-CREATE INDEX IF NOT EXISTS idx_vagas_hospital_data ON vagas(vagas_hospital, vagas_data);
-CREATE INDEX IF NOT EXISTS idx_candidaturas_vaga_medico ON candidaturas(vagas_id, medico_id);
-CREATE INDEX IF NOT EXISTS idx_candidaturas_vaga_precadastro ON candidaturas(vagas_id, medico_precadastro_id);
+GRANT EXECUTE ON FUNCTION get_vagas_paginated(integer, integer, uuid[], uuid[], uuid[], date, date, numeric, numeric, uuid[], uuid[], uuid[], text, uuid[], text[], text[], uuid[]) TO authenticated;
 
--- Permissões
-GRANT EXECUTE ON FUNCTION get_vagas_paginated(integer, integer, text, uuid, uuid, uuid, date, date, numeric, numeric, uuid, uuid, uuid, text) TO authenticated;
-
--- Comentário
-COMMENT ON FUNCTION get_vagas_paginated IS 'Busca vagas agrupadas por vagas_id com filtros opcionais (status, hospital, especialidade, setor, data, valor, período, tipo, grupo, texto). Todas as candidaturas são compactadas em array por vaga, resultando em menos páginas totais';
+COMMENT ON FUNCTION get_vagas_paginated IS 'Busca vagas agrupadas por vagas_id com filtros opcionais usando arrays em snake_case. Filtros disponíveis: hospital_ids[], specialty_ids[], sector_ids[], period_ids[], type_ids[], group_ids[], doctor_ids[], application_status_filter[PENDENTE,APROVADO,REPROVADO], job_status_filter[aberta,fechada,cancelada,anunciada], grade_ids[], além de filtros de data, valor e texto. Todas as candidaturas são compactadas em array por vaga, resultando em menos páginas totais';
