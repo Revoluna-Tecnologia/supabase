@@ -113,11 +113,11 @@ WHERE v.candidaturas_id IS NOT NULL
   )
   AND (
     start_date IS NULL
-    OR v.vagas_data >= start_date
+    OR v.candidatos_createdate >= start_date
   )
   AND (
     end_date IS NULL
-    OR v.vagas_data <= end_date
+    OR v.candidatos_createdate <= end_date
   )
   AND (
     min_value IS NULL
@@ -331,11 +331,11 @@ FROM (
       )
       AND (
         start_date IS NULL
-        OR v.vagas_data >= start_date
+        OR v.candidatos_createdate >= start_date
       )
       AND (
         end_date IS NULL
-        OR v.vagas_data <= end_date
+        OR v.candidatos_createdate <= end_date
       )
       AND (
         min_value IS NULL
