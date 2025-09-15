@@ -1,3 +1,43 @@
+/*
+  Função: get_applications_paginated
+
+  Descrição:
+    Busca candidaturas individuais (não agrupadas) com filtros opcionais e funcionalidade de paginação e ordenação.
+    Permite filtrar por diversos campos relacionados à vaga, hospital, médico, especialidade, setor, período, tipo, grupo, status da candidatura, status da vaga, grade, datas, valores e texto de busca.
+    A ordenação pode ser feita por: data de criação da candidatura, data de criação da vaga, data da vaga, valor da vaga, nome do hospital, setor, especialidade, período, status da vaga e status da candidatura.
+    Retorna os dados das candidaturas em formato JSONB, incluindo informações completas da vaga, médico, hospital, especialidade, setor, escalista, grupo e grade, além de informações de paginação.
+
+  Parâmetros:
+    - page_number (integer): Número da página (default: 1)
+    - page_size (integer): Tamanho da página (default: 10, máximo: 100)
+    - hospital_ids (uuid[]): IDs dos hospitais para filtro (opcional)
+    - specialty_ids (uuid[]): IDs das especialidades para filtro (opcional)
+    - sector_ids (uuid[]): IDs dos setores para filtro (opcional)
+    - start_date (date): Data inicial para filtro (opcional)
+    - end_date (date): Data final para filtro (opcional)
+    - min_value (numeric): Valor mínimo da vaga para filtro (opcional)
+    - max_value (numeric): Valor máximo da vaga para filtro (opcional)
+    - period_ids (uuid[]): IDs dos períodos para filtro (opcional)
+    - type_ids (uuid[]): IDs dos tipos de vaga para filtro (opcional)
+    - group_ids (uuid[]): IDs dos grupos para filtro (opcional)
+    - search_text (text): Texto para busca em hospital, especialidade, observações ou setor (opcional)
+    - doctor_ids (uuid[]): IDs dos médicos para filtro (opcional)
+    - application_status_filter (text[]): Status das candidaturas ['PENDENTE', 'APROVADO', 'REPROVADO'] (opcional)
+    - job_status_filter (text[]): Status das vagas ['aberta', 'fechada', 'cancelada', 'anunciada'] (opcional)
+    - grade_ids (uuid[]): IDs das grades para filtro (opcional)
+    - order_by (text): Campo para ordenação (default: 'candidatos_createdate')
+    - order_direction (text): Direção da ordenação ['ASC', 'DESC'] (default: 'DESC')
+
+  Retorno:
+    - data (jsonb): Lista paginada das candidaturas com informações completas.
+    - pagination (jsonb): Informações de paginação (página atual, tamanho, total de registros, total de páginas, se há próxima/anterior, etc.).
+
+  Observações:
+    - Todos os filtros são opcionais.
+    - A função valida os parâmetros de paginação e ordenação.
+    - A ordenação é feita dinamicamente conforme os parâmetros recebidos.
+    - O resultado é seguro para uso em ambientes autenticados.
+*/
 -- Adiciona funcionalidade de ordenação à função get_applications_paginated
 -- Permite ordenar por: data de criação da candidatura, data da vaga, valor da vaga, nome do hospital, setor, especialidade, período, status da vaga e status da candidatura
 -- Remove a função existente para evitar conflito de assinatura
