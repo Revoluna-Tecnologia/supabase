@@ -49,6 +49,7 @@ create type houston.app_permission as enum (
       'medicos_precadastro.remove'
     );
 
+
 create table houston.role_permissions (
     role houston.app_role not null,
     permission houston.app_permission not null,
@@ -101,14 +102,22 @@ insert into houston.role_permissions (role, permission) values
     -- Permissões do escalista
     ('escalista', 'vagas.view');
 
+-- Tabela de papéis por usuário agora suporta múltiplos grupos e hospitais via arrays
 create table houston.user_roles (
-    user_id uuid not null references auth.users(id) on delete cascade,
-    role houston.app_role not null,
-    primary key (user_id, role)
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role houston.app_role not null,
+  group_ids uuid[] not null default '{}'::uuid[],      -- grupos associados ao papel
+  hospital_ids uuid[] not null default '{}'::uuid[],   -- hospitais associados ao papel
+  primary key (user_id, role)
 );
 create index idx_user_roles_user_id on houston.user_roles(user_id);
+create index idx_user_roles_group_ids on houston.user_roles using gin (group_ids);
+create index idx_user_roles_hospital_ids on houston.user_roles using gin (hospital_ids);
 
-create function houston.role_level(role houston.app_role) returns int as $$
+create or replace function houston.role_level(role houston.app_role) 
+returns int 
+language plpgsql
+as $$
 begin
   case role
     when 'administrador' then return 4;
@@ -119,38 +128,57 @@ begin
     else return -1;
   end case;
 end;
+$$;
 
 -- Create the auth hook function
 create or replace function houston.custom_access_token_hook(event jsonb)
 returns jsonb
 language plpgsql
-stable
+security definer
+set search_path = public, houston
 as $$
-  declare
-    claims jsonb;
-    user_role houston.app_role;
-  begin
-    -- Fetch the user role in the user_roles table
-    select role into user_role from houston.user_roles where user_id = (event->>'user_id')::uuid;
+declare
+  uid uuid := (event->>'user_id')::uuid;
+  payload jsonb := event->'claims';
+  highest_role_text text;
+begin
+  select r.app_role
+  from (
+     select ur.role as app_role,
+            max(houston.role_level(ur.role)) over() as max_level
+     from houston.user_roles ur
+     where ur.user_id = uid
+  ) r
+  where houston.role_level(r.app_role) = r.max_level
+  limit 1
+  into highest_role_text;
 
-    claims := event->'claims';
+  if highest_role_text is null then
+    highest_role_text := 'escalista'; -- default mais baixo ou null
+  end if;
 
-    if user_role is not null then
-      -- Set the claim
-      claims := jsonb_set(claims, '{user_role}', to_jsonb(user_role));
-    else
-      claims := jsonb_set(claims, '{user_role}', 'null');
-    end if;
-
-    -- Update the 'claims' object in the original event
-    event := jsonb_set(event, '{claims}', claims);
-
-    -- Return the modified or original event
-    return event;
-  end;
+  -- Opcional: agregar arrays de group_ids / hospital_ids
+  -- CUIDADO: pode explodir tamanho do JWT se muitos
+  return jsonb_build_object(
+    'claims',
+    payload
+      || jsonb_build_object(
+            'user_role', highest_role_text,
+            'permissions', coalesce((
+               select jsonb_agg(distinct rp.permission) from houston.role_permissions rp
+               join houston.user_roles ur on ur.role = rp.role
+               where ur.user_id = uid
+            ), '[]'::jsonb),
+            'roles', coalesce((
+               select jsonb_agg(distinct ur.role) from houston.user_roles ur where ur.user_id = uid
+            ), '[]'::jsonb)
+         )
+  );
+end;
 $$;
 
 grant usage on schema public to supabase_auth_admin;
+grant usage on schema houston to supabase_auth_admin;
 
 grant execute
   on function houston.custom_access_token_hook
@@ -175,15 +203,15 @@ using (true);
 
 
 create or replace function houston.authorize(
-  requested_permission app_permission
+  requested_permission houston.app_permission
 )
 returns boolean as $$
 declare
   bind_permissions int;
-  user_role public.app_role;
+  user_role houston.app_role;
 begin
   -- Fetch user role once and store it to reduce number of calls
-  select (auth.jwt() ->> 'user_role')::public.app_role into user_role;
+  select (auth.jwt() ->> 'user_role')::houston.app_role into user_role;
 
   select count(*)
   into bind_permissions
@@ -195,5 +223,3 @@ begin
 end;
 $$ language plpgsql stable security definer set search_path = '';
 
-
-create policy "Allow authorized delete access" on public.vagas for delete to authenticated using ((SELECT houston.authorize('vagas.delete')) );
