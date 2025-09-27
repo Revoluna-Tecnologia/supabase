@@ -1,0 +1,217 @@
+name: Migration Sync to Houston
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [staging]
+    paths:
+      - 'supabase/migrations/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Detectar mudanças em migrações e mencionar Claude
+  detect-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed migration files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
+        with:
+          files: supabase/migrations/**/*.sql
+
+      - name: Mention Claude for analysis
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/github-script@v7
+        env:
+          MIGRATION_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+          SOURCE_PR: ${{ github.event.pull_request.html_url }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+        with:
+          script: |
+            const migrationFiles = process.env.MIGRATION_FILES.split(' ');
+
+            const claudeComment = [
+              '@claude Analyze these database migrations and implement necessary changes in Houston:',
+              '',
+              '## 🔍 Migration Analysis Request',
+              '',
+              `**Source PR:** ${process.env.SOURCE_PR}`,
+              `**Source Branch:** \`${process.env.SOURCE_BRANCH}\``,
+              '**Target Repository:** houston-III',
+              '',
+              '### 📂 Migration Files to Analyze:',
+              ...migrationFiles.map(file => `- \`${file}\``),
+              '',
+              '### 📋 Instructions:',
+              '1. 🔍 Read and analyze each migration file for frontend impact',
+              '2. 📖 Follow the detailed instructions in docs/CLAUDE.md',
+              '3. 🛠️ If changes are needed, create a PR in houston-III repository',
+              '4. 🏷️ Follow Revoluna PR standards (branch: feature/{issue}-sync-{desc})',
+              '5. 📊 Comment back here with the Houston PR link when created',
+              '',
+              '**Please proceed with analysis and implementation according to Revoluna standards.**',
+              '',
+              '---',
+              '**Migration Files Changed:**',
+              ...migrationFiles.map(file => `- \`${file}\``)
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: claudeComment
+            });
+
+            console.log('✅ Claude analysis requested');
+
+      - name: Add labels to Supabase PR
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['migration', 'frontend-sync-requested', 'claude-analysis-pending']
+            });
+
+  # Detectar quando Claude comenta com link da PR do Houston
+  detect-houston-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+
+    steps:
+      - name: Check if comment contains Houston PR link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment?.body || '';
+            const user = context.payload.comment?.user?.login || '';
+
+            // Verificar se o comentário é do Claude e contém link do Houston
+            if (user === 'claude' || comment.includes('houston-III/pull/')) {
+              const prMatch = comment.match(/houston-III\/pull\/(\d+)/);
+
+              if (prMatch) {
+                const houstonPRNumber = prMatch[1];
+
+                // Atualizar labels da PR original
+                await github.rest.issues.addLabels({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  labels: ['houston-pr-created']
+                });
+
+                await github.rest.issues.removeLabel({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'claude-analysis-pending'
+                }).catch(() => {}); // Ignore if label doesn't exist
+
+                // Comentar na PR com link para Houston
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: [
+                    '## ✅ Houston Implementation Created',
+                    '',
+                    'Claude has analyzed the migrations and created a corresponding PR in Houston:',
+                    '',
+                    `**Houston PR:** [#${houstonPRNumber}](https://github.com/Revoluna-Tecnologia/houston-III/pull/${houstonPRNumber})`,
+                    '',
+                    '### 📋 Next Steps:',
+                    '1. Review the Houston PR implementation',
+                    '2. When this Supabase PR is merged, the Houston PR will be ready for merge',
+                    '3. Both PRs should be merged together to maintain sync',
+                    '',
+                    '---',
+                    '🤖 *Automated migration sync workflow*'
+                  ].join('\n')
+                });
+
+                console.log(`✅ Detected Houston PR #${houstonPRNumber}`);
+              }
+            }
+
+  # Notificar Houston quando PR for mergeado
+  notify-houston-on-merge:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+
+    steps:
+      - name: Find and notify Houston PR
+        uses: actions/github-script@v7
+        env:
+          SOURCE_PR: ${{ github.event.pull_request.html_url }}
+          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        with:
+          script: |
+            // Procurar comentários desta PR que mencionam Houston PR
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            let houstonPRNumber = null;
+
+            for (const comment of comments.data) {
+              const prMatch = comment.body.match(/houston-III\/pull\/(\d+)/);
+              if (prMatch) {
+                houstonPRNumber = prMatch[1];
+                break;
+              }
+            }
+
+            if (houstonPRNumber) {
+              // Comentar na PR do Houston sobre o merge
+              await github.rest.issues.createComment({
+                owner: 'Revoluna-Tecnologia',
+                repo: 'houston-III',
+                issue_number: parseInt(houstonPRNumber),
+                body: [
+                  '## 🚀 Source Repository Merged',
+                  '',
+                  'The source migration PR has been successfully merged to staging:',
+                  '',
+                  `**Source PR:** ${process.env.SOURCE_PR}`,
+                  `**Merge Commit:** \`${process.env.MERGE_COMMIT}\``,
+                  `**Merged by:** @${process.env.MERGED_BY}`,
+                  '',
+                  '### ✅ Ready for Final Review and Merge',
+                  '',
+                  'This PR is now ready for final review and merge to complete the migration synchronization.',
+                  '',
+                  '---',
+                  '🤖 *Automated notification from Supabase migration sync*'
+                ].join('\n')
+              });
+
+              // Adicionar label indicando que source foi mergeado
+              await github.rest.issues.addLabels({
+                owner: 'Revoluna-Tecnologia',
+                repo: 'houston-III',
+                issue_number: parseInt(houstonPRNumber),
+                labels: ['source-merged', 'ready-for-merge']
+              });
+
+              console.log(`✅ Notified Houston PR #${houstonPRNumber}`);
+            } else {
+              console.log('⚠️ No corresponding Houston PR found');
+            }
