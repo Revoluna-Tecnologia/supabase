@@ -42,7 +42,9 @@ CREATE POLICY vagas_select_rbac
 ON public.vagas
 FOR SELECT
 TO authenticated
-USING (houston.authorize('vagas.view'));
+USING (
+  houston.scheduler_belongs_can_access('vagas.view',vagas.vagas_hospital,vagas.vagas_setor, vagas.grupo_id )
+);
 
 CREATE POLICY vagas_insert_rbac
 ON public.vagas

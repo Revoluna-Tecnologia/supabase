@@ -56,7 +56,57 @@ create table houston.role_permissions (
     primary key (role, permission)
 );
 
+create or replace function houston.vaga_in_user_scope(
+  p_grupo_id uuid,
+  p_hospital_id uuid
+) returns boolean
+language plpgsql
+stable
+security invoker
+as $$
+declare
+  jwt_role_text text;
+  lvl int;
+begin
+  -- Captura papel do JWT (caso exista)
+  jwt_role_text := auth.jwt()->>'user_role';
+  if jwt_role_text is not null then
+    begin
+      lvl := houston.role_level(jwt_role_text::houston.app_role);
+      -- Papéis de nível moderador ou superior ignoram escopo
+      if lvl >= houston.role_level('moderador') then
+        return true;
+      end if;
+    exception when others then
+      -- Se por algum motivo o cast falhar, segue fluxo normal
+      null;
+    end;
+  end if;
 
+  -- Sem usuário autenticado -> fora do escopo
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  -- Se ambos nulos não há ancoragem de escopo; negar (a menos que papel alto acima, já retornado)
+  if p_grupo_id is null and p_hospital_id is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from houston.user_roles ur
+    where ur.user_id = auth.uid()
+      and (
+        (p_grupo_id    is not null and p_grupo_id    = any(coalesce(ur.group_ids,    '{}'::uuid[])))
+        or
+        (p_hospital_id is not null and p_hospital_id = any(coalesce(ur.hospital_ids, '{}'::uuid[])))
+      )
+  );
+end;
+$$;
+
+comment on function houston.vaga_in_user_scope(uuid, uuid) is 'Retorna true se vaga está no escopo do usuário (grupos/hospitais) ou se papel >= moderador.';
 insert into houston.role_permissions (role, permission) values
     -- Permissões do administrador
     ('administrador', 'vagas.view'),
@@ -108,11 +158,13 @@ create table houston.user_roles (
   role houston.app_role not null,
   group_ids uuid[] not null default '{}'::uuid[],      -- grupos associados ao papel
   hospital_ids uuid[] not null default '{}'::uuid[],   -- hospitais associados ao papel
+  setor_ids uuid[] null default '{}'::uuid[],
   primary key (user_id, role)
 );
 create index idx_user_roles_user_id on houston.user_roles(user_id);
 create index idx_user_roles_group_ids on houston.user_roles using gin (group_ids);
 create index idx_user_roles_hospital_ids on houston.user_roles using gin (hospital_ids);
+create index idx_user_roles_setor_ids on houston.user_roles using gin (setor_ids);
 
 create or replace function houston.role_level(role houston.app_role) 
 returns int 
@@ -154,7 +206,12 @@ begin
   into highest_role_text;
 
   if highest_role_text is null then
-    highest_role_text := 'escalista'; -- default mais baixo ou null
+    -- Insere usuário com papel padrão 'escalista' se não existir
+    insert into houston.user_roles (user_id, role, group_ids, hospital_ids, setor_ids)
+    values (uid, 'escalista', '{}'::uuid[], '{}'::uuid[], '{}'::uuid[])
+    on conflict (user_id, role) do nothing;
+    
+    highest_role_text := 'escalista'; -- define papel padrão
   end if;
 
   -- Opcional: agregar arrays de group_ids / hospital_ids
@@ -177,31 +234,26 @@ begin
 end;
 $$;
 
-grant usage on schema public to supabase_auth_admin;
-grant usage on schema houston to supabase_auth_admin;
+grant usage on schema public to supabase_auth_admin, authenticated;
+grant usage on schema houston to supabase_auth_admin, authenticated;
 
 grant execute
   on function houston.custom_access_token_hook
-  to supabase_auth_admin;
+  to supabase_auth_admin, authenticated;
 
 revoke execute
   on function houston.custom_access_token_hook
   from authenticated, anon, public;
 
+
 grant all
   on table houston.user_roles
-to supabase_auth_admin;
-
-revoke all
-  on table houston.user_roles
-  from authenticated, anon, public;
+  to supabase_auth_admin, authenticated;
 
 create policy "Allow auth admin to read user roles" ON houston.user_roles
 as permissive for select
-to supabase_auth_admin
+to supabase_auth_admin, authenticated
 using (true);
-
-
 create or replace function houston.authorize(
   requested_permission houston.app_permission
 )
@@ -213,13 +265,79 @@ begin
   -- Fetch user role once and store it to reduce number of calls
   select (auth.jwt() ->> 'user_role')::houston.app_role into user_role;
 
+  if user_role is null then
+    return false; -- No role assigned
+  end if;
+
+  if user_role = 'administrador' then
+    return true; -- Admin tem todas as permissões
+  end if;
+
+
+  
+
   select count(*)
   into bind_permissions
   from houston.role_permissions
   where role_permissions.permission = requested_permission
     and role_permissions.role = user_role;
-
   return bind_permissions > 0;
 end;
 $$ language plpgsql stable security definer set search_path = '';
+
+
+
+grant execute
+  on function houston.authorize(houston.app_permission)
+  to supabase_auth_admin, authenticated;
+revoke execute
+  on function houston.authorize(houston.app_permission)
+  from public;
+
+create or replace function houston.scheduler_belongs_can_access(
+  requested_permission houston.app_permission,
+  hospital_id uuid,
+  setor_id uuid,
+  group_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+declare
+  user_id uuid := auth.uid();
+  user_role houston.app_role;
+  has_permission boolean := false;
+begin
+    select (auth.jwt() ->> 'user_role')::houston.app_role into user_role;
+
+  if(user_role = 'escalista'::houston.app_role ) then
+  select exists (
+    select 1
+    from houston.user_roles ur
+    join houston.role_permissions rp
+      on ur.role = rp.role
+    where 
+      ur.user_id = auth.uid()
+      and ur.role = user_role
+      and requested_permission = rp.permission
+      and (hospital_id = any(ur.hospital_ids))
+      and (setor_id = any(ur.setor_ids))
+      and (group_id = any(ur.group_ids))
+  ) into has_permission;
+
+  return has_permission;
+  else return houston.authorize('vagas.view');
+  end if;
+end;
+$$;
+
+grant all on  houston.role_permissions  to supabase_auth_admin, authenticated;
+
+
+
+
+
 
