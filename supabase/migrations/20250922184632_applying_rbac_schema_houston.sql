@@ -46,7 +46,13 @@ create type houston.app_permission as enum (
       'medicos_precadastro.view',
       'medicos_precadastro.add',
       'medicos_precadastro.edit',
-      'medicos_precadastro.remove'
+      'medicos_precadastro.remove',
+
+      -- Grupo
+      'grupo.view',
+      'grupo.add',
+      'grupo.edit',
+      'grupo.remove'
     );
 
 
@@ -125,6 +131,10 @@ insert into houston.role_permissions (role, permission) values
     ('administrador', 'medicos_precadastro.add'),
     ('administrador', 'medicos_precadastro.edit'),
     ('administrador', 'medicos_precadastro.remove'),
+    ('administrador', 'grupo.view'),
+    ('administrador', 'grupo.add'),
+    ('administrador', 'grupo.edit'),
+    ('administrador', 'grupo.remove'),
 
     -- Permissões do moderador
     ('moderador', 'vagas.view'),
@@ -143,14 +153,32 @@ insert into houston.role_permissions (role, permission) values
     ('gestor', 'membros.view'),
     ('gestor', 'membros.add'),
     ('gestor', 'membros.edit'),
+    ('gestor', 'medicos.view'),
+    ('gestor', 'medicos.add'),
+    ('gestor', 'medicos.edit'),
+    ('gestor', 'medicos.remove'),
+    ('gestor', 'grupo.view'),
+    ('gestor', 'grupo.add'),
+    ('gestor', 'grupo.edit'),
+    ('gestor', 'grupo.remove'),
 
     -- Permissões do coordenador
     ('coordenador', 'vagas.view'),
     ('coordenador', 'vagas.create'),
     ('coordenador', 'vagas.edit'),
-
+    ('coordenador', 'membros.view'),
+    ('coordenador', 'membros.add'),
+    ('coordenador', 'membros.edit'),
+    ('coordenador', 'medicos_precadastro.view'),
+    ('coordenador', 'medicos_precadastro.add'),
+    ('coordenador', 'medicos_precadastro.edit'),
+    ('coordenador', 'medicos_precadastro.remove'),
     -- Permissões do escalista
-    ('escalista', 'vagas.view');
+    ('escalista', 'membros.view'),
+    ('escalista', 'vagas.view'),
+    ('escalista', 'medicos_precadastro.view'),
+    ('escalista', 'medicos.view'),
+    ('escalista', 'grupo.view');
 
 -- Tabela de papéis por usuário agora suporta múltiplos grupos e hospitais via arrays
 create table houston.user_roles (
@@ -313,6 +341,41 @@ declare
 begin
     select (auth.jwt() ->> 'user_role')::houston.app_role into user_role;
 
+  if(user_role = 'gestor'::houston.app_role ) then
+    select exists (
+      select 1
+      from houston.user_roles ur
+      join houston.role_permissions rp
+        on ur.role = rp.role
+      where 
+        ur.user_id = auth.uid()
+        and ur.role = user_role
+        and requested_permission = rp.permission
+        and (group_id = any(ur.group_ids))
+    ) into has_permission;
+    return has_permission;
+  end if;
+  if(user_role = 'coordenador'::houston.app_role ) then
+    select exists (
+      select 1
+      from houston.user_roles ur
+      join houston.role_permissions rp
+        on ur.role = rp.role
+      where 
+        ur.user_id = auth.uid()
+        and ur.role = user_role
+        and requested_permission = rp.permission
+       and (
+          cardinality(ur.hospital_ids) = 0  -- Se vazio, ignora validação
+          OR hospital_id = any(ur.hospital_ids)
+        )
+        and (
+          cardinality(ur.setor_ids) = 0  -- Se vazio, ignora validação
+          OR setor_id = any(ur.setor_ids)
+        )
+    ) into has_permission;
+    return has_permission;
+  end if;
   if(user_role = 'escalista'::houston.app_role ) then
   select exists (
     select 1
@@ -339,5 +402,13 @@ grant all on  houston.role_permissions  to supabase_auth_admin, authenticated;
 
 
 
+-- ❌💀☠️✋🏾🛑DEVE SER REMOVIDO ANTES E SUBIR PARA PRODUÇÃO ---- 
 
-
+-- INSERT INTO houston.user_roles (user_id, role, group_ids, hospital_ids, setor_ids)
+-- VALUES (
+--   'a41308b5-a6ba-4a2a-81f7-e93fe962322b',
+--   'escalista',
+--   ARRAY['3e21c0a7-2002-43b1-9c78-181596ea5470']::uuid[],
+--   ARRAY['0548cd47-0e14-44be-bdc7-2e5dc9907f23']::uuid[],
+--   ARRAY['6beadfb3-861d-46fe-8515-16c0c2708204']::uuid[]
+-- );
