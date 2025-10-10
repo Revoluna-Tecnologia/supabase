@@ -6,7 +6,7 @@
 
 -- Adicionar campo de status na tabela escalista
 ALTER TABLE public.escalista 
-ADD COLUMN IF NOT EXISTS escalista_status character varying not null default 'pendente';
+ADD COLUMN IF NOT EXISTS escalista_status character varying not null default 'ativo';
 
 -- Criar índice para o status
 CREATE INDEX IF NOT EXISTS idx_escalista_status ON public.escalista USING btree (escalista_status);
@@ -185,7 +185,7 @@ BEGIN
     
     -- Inserir escalista
     INSERT INTO public.escalista (
-        escalista_auth_id,
+        id,
         escalista_nome,
         escalista_telefone,
         escalista_email,
@@ -207,7 +207,32 @@ BEGIN
         COALESCE(user_record.created_at, CURRENT_TIMESTAMP),
         CURRENT_TIMESTAMP,
         user_record.id
-    ) RETURNING escalista_id INTO new_escalista_id;
+    ) RETURNING id INTO new_escalista_id;
+    
+    -- Inserir na tabela houston.user_roles
+    INSERT INTO houston.user_roles (
+        user_id,
+        role,
+        group_ids,
+        hospital_ids,
+        setor_ids
+    ) VALUES (
+        user_record.id,
+        'escalista',
+        CASE 
+            WHEN group_id IS NOT NULL THEN ARRAY[group_id]
+            ELSE '{}'::uuid[]
+        END,
+        '{}',  -- hospital_ids vazio por padrão
+        '{}'   -- setor_ids vazio por padrão
+    )
+    ON CONFLICT (user_id, role) DO UPDATE SET
+        group_ids = CASE 
+            WHEN group_id IS NOT NULL THEN ARRAY[group_id]
+            ELSE '{}'::uuid[]
+        END;
+    
+    RAISE NOTICE '[CREATE_ESCALISTA] Role de escalista adicionado na tabela houston.user_roles para user_id: % com group_id: %', user_record.id, group_id;
     
     -- Retornar sucesso
     success := TRUE;
@@ -249,7 +274,7 @@ BEGIN
         FROM auth.users u
         LEFT JOIN public.escalista e ON e.escalista_email = u.email
         WHERE u.invited_at IS NOT NULL 
-          AND e.escalista_id IS NULL
+          AND e.id IS NULL
         ORDER BY u.invited_at DESC
     ) LOOP
         
