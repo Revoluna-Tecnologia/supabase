@@ -52,7 +52,13 @@ create type houston.app_permission as enum (
       'grupo.view',
       'grupo.add',
       'grupo.edit',
-      'grupo.remove'
+      'grupo.remove',
+
+      --USER ROLES(PERMISSÃO DOS USUÁRIOS) PODEM SER ADICIONADAS AQUI
+      'roles.view',
+      'roles.add',
+      'roles.edit',
+      'roles.remove'
     );
 
 
@@ -135,6 +141,10 @@ insert into houston.role_permissions (role, permission) values
     ('administrador', 'grupo.add'),
     ('administrador', 'grupo.edit'),
     ('administrador', 'grupo.remove'),
+    ('administrador', 'roles.view'),
+    ('administrador', 'roles.add'),
+    ('administrador', 'roles.edit'),
+    ('administrador', 'roles.remove'),
 
     -- Permissões do moderador
     ('moderador', 'vagas.view'),
