@@ -8,7 +8,8 @@
 -- Drop the existing view
 DROP VIEW IF EXISTS public.vw_vagas_candidaturas CASCADE;
 
-CREATE VIEW public.vw_vagas_candidaturas AS
+CREATE VIEW public.vw_vagas_candidaturas with (security_invoker = on)
+AS
 SELECT
   row_number() OVER (
     ORDER BY

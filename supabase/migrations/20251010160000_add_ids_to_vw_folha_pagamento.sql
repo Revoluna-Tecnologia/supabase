@@ -4,7 +4,9 @@
 -- Drop the existing view
 DROP VIEW IF EXISTS public.vw_folha_pagamento;
 
-create view public.vw_folha_pagamento as
+create view public.vw_folha_pagamento 
+with (security_invoker = on) 
+as
 select
   v.id as vagas_id,
   v.data as vagas_data,

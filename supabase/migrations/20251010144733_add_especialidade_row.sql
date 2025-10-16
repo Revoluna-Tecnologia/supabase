@@ -3,7 +3,7 @@
 -- Date: 2025-10-10
 
 -- Inserir a especialidade Generalista
-INSERT INTO especialidades (especialidade_id, especialidade_nome, especialidade_index)
+INSERT INTO especialidades (id, nome, index)
 VALUES (
   gen_random_uuid(),
   'Generalista',
@@ -14,11 +14,11 @@ VALUES (
 -- Usando uma subconsulta com ROW_NUMBER para gerar os índices ordenados
 WITH especialidades_ordenadas AS (
   SELECT 
-    especialidade_id,
-    ROW_NUMBER() OVER (ORDER BY especialidade_nome) - 1 AS novo_index
+    id,
+    ROW_NUMBER() OVER (ORDER BY nome) - 1 AS novo_index
   FROM especialidades
 )
 UPDATE especialidades
-SET especialidade_index = eo.novo_index
+SET index = eo.novo_index
 FROM especialidades_ordenadas eo
-WHERE especialidades.especialidade_id = eo.especialidade_id;
+WHERE especialidades.id = eo.id;
