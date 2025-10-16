@@ -12,21 +12,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
-CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
-
-
-
-
-
-
 CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pgsodium";
 
 
 
@@ -112,42 +98,43 @@ ALTER TYPE "public"."app_role" OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."aprovacao_automatica_favoritos"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
-    AS $$BEGIN
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
     -- Verifica se existe uma relação de favorito entre o médico e o grupo da vaga
     IF EXISTS (
         SELECT 1 
         FROM medicos_favoritos mf
-        INNER JOIN vagas v ON v.vagas_id = NEW.vagas_id
+        INNER JOIN vagas v ON v.id = NEW.vagas_id
         WHERE mf.medico_id = NEW.medico_id 
         AND mf.grupo_id = v.grupo_id
     ) THEN
         -- Se o médico é favorito do grupo, aprova automaticamente
-        NEW.candidatura_status := 'APROVADO';
-        NEW.candidatos_dataconfirmacao := CURRENT_DATE;
-        NEW.candidaturas_updateat := NOW();
-        NEW.candidaturas_updateby := auth.uid();
+        NEW.status := 'APROVADO';
+        NEW.data_confirmacao := CURRENT_DATE;
+        NEW.updated_at := NOW();
+        NEW.updated_by := auth.uid();
         
         -- Fechar a vaga
         UPDATE vagas
-        SET vagas_status = 'fechada',
-            vagas_updateat = NOW(),
-            vagas_updateby = auth.uid()
-        WHERE vagas_id = NEW.vagas_id;
+        SET status = 'fechada',
+            updated_at = NOW(),
+            updated_by = auth.uid()
+        WHERE id = NEW.vagas_id;
         
         -- Reprovar outras candidaturas pendentes
         UPDATE candidaturas
-        SET candidatura_status = 'REPROVADO',
-            candidaturas_updateat = NOW(),
-            candidaturas_updateby = auth.uid()
+        SET status = 'REPROVADO',
+            updated_at = NOW(),
+            updated_by = auth.uid()
         WHERE vagas_id = NEW.vagas_id
-        AND candidaturas_id != NEW.candidaturas_id;
+        AND id != NEW.id;
         
     END IF;
     
     RETURN NEW;
-END;$$;
+END;
+$$;
 
 
 ALTER FUNCTION "public"."aprovacao_automatica_favoritos"() OWNER TO "postgres";
@@ -234,21 +221,21 @@ ALTER FUNCTION "public"."aretheytester"("user_id" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."atualizar_candidaturas_vaga_cancelada"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql"
     SET "search_path" TO 'public'
     AS $$
 BEGIN
     -- Verificar se o status da vaga foi alterado para 'cancelada'
-    IF NEW.vagas_status = 'cancelada' AND (OLD.vagas_status IS NULL OR OLD.vagas_status != 'cancelada') THEN
+    IF NEW.status = 'cancelada' AND (OLD.status IS NULL OR OLD.status != 'cancelada') THEN
         -- Atualizar todas as candidaturas pendentes associadas a esta vaga para 'REPROVADO'
         UPDATE public.candidaturas
         SET 
-            candidatura_status = 'REPROVADO',
-            candidaturas_updateat = now(),
-            candidaturas_updateby = 'Sistema: Vaga Cancelada'
+            status = 'REPROVADO',
+            updated_at = now(),
+            updated_by = 'Sistema: Vaga Cancelada'
         WHERE 
-            vagas_id = NEW.vagas_id
-            AND candidatura_status = 'PENDENTE';
+            vagas_id = NEW.id
+            AND status = 'PENDENTE';
     END IF;
     
     RETURN NEW;
@@ -331,13 +318,6 @@ $$;
 
 
 ALTER FUNCTION "public"."atualizar_status_vagas_expiradas"() OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."atualizar_status_vagas_expiradas"() IS 'Atualiza status de vagas expiradas seguindo a regra:
-- Vagas SEM candidaturas -> cancelada
-- Vagas COM candidaturas -> fechada
-- Reprova candidaturas pendentes de vagas expiradas';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."atualizar_urls_documentos"("p_carteira_id" "uuid", "p_base_url" character varying, "p_user_id" "uuid") RETURNS TABLE("documento" character varying, "url_antiga" character varying, "url_nova" character varying, "sucesso" boolean)
@@ -439,24 +419,23 @@ ALTER FUNCTION "public"."atualizar_urls_documentos"("p_carteira_id" "uuid", "p_b
 
 
 CREATE OR REPLACE FUNCTION "public"."atualizar_vagas_status"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
+    LANGUAGE "plpgsql"
     AS $$
 BEGIN
     -- Atualiza o status da vaga para 'fechada' quando a candidatura for 'APROVADO'
-    IF NEW.candidatura_status = 'APROVADO' THEN
+    IF NEW.status = 'APROVADO' THEN
         -- 1. Atualiza o status da vaga para 'fechada'
         UPDATE vagas
-        SET vagas_status = 'fechada'
-        WHERE vagas_id = NEW.vagas_id;
+        SET status = 'fechada'
+        WHERE id = NEW.vagas_id;
         
         -- 2. Reprova todas as demais candidaturas para a mesma vaga
         UPDATE candidaturas
-        SET candidatura_status = 'REPROVADO',
-            candidaturas_updateat = NOW(),
-            candidaturas_updateby = 'SISTEMA_AUTO_REPROVACAO'
+        SET status = 'REPROVADO',
+            updated_at = NOW(),
+            updated_by = 'SISTEMA_AUTO_REPROVACAO'
         WHERE vagas_id = NEW.vagas_id
-        AND candidaturas_id != NEW.candidaturas_id;
+        AND id != NEW.id;
     END IF;
 
     RETURN NEW;
@@ -513,50 +492,50 @@ BEGIN
   -- PRIMEIRO: Atualizar registros em equipes_medicos que referenciam pré-cadastros
   UPDATE equipes_medicos 
   SET 
-    medico_id = NEW.id,
+    medico_id = NEW.medico_id,
     medico_precadastro_id = NULL
   WHERE medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'
     AND medico_precadastro_id IN (
       SELECT id FROM medicos_precadastro 
-      WHERE (medico_crm = NEW.medico_crm AND medico_estado = NEW.medico_estado)
+      WHERE (crm = NEW.crm AND estado = NEW.estado)
          OR (
-           NEW.medico_cpf IS NOT NULL 
-           AND medico_cpf IS NOT NULL 
-           AND REPLACE(REPLACE(REPLACE(medico_cpf, '.', ''), '-', ''), ' ', '') = 
-               REPLACE(REPLACE(REPLACE(NEW.medico_cpf, '.', ''), '-', ''), ' ', '')
+           NEW.cpf IS NOT NULL 
+           AND cpf IS NOT NULL 
+           AND REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = 
+               REPLACE(REPLACE(REPLACE(NEW.cpf, '.', ''), '-', ''), ' ', '')
          )
     );
     
   -- SEGUNDO: Atualizar registros em candidaturas que referenciam pré-cadastros
   UPDATE candidaturas 
   SET 
-    medico_id = NEW.id,
+    medico_id = NEW.medico_id,
     medico_precadastro_id = NULL
   WHERE medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'
     AND medico_precadastro_id IN (
       SELECT id FROM medicos_precadastro 
-      WHERE (medico_crm = NEW.medico_crm AND medico_estado = NEW.medico_estado)
+      WHERE (crm = NEW.crm AND estado = NEW.estado)
          OR (
-           NEW.medico_cpf IS NOT NULL 
-           AND medico_cpf IS NOT NULL 
-           AND REPLACE(REPLACE(REPLACE(medico_cpf, '.', ''), '-', ''), ' ', '') = 
-               REPLACE(REPLACE(REPLACE(NEW.medico_cpf, '.', ''), '-', ''), ' ', '')
+           NEW.cpf IS NOT NULL 
+           AND cpf IS NOT NULL 
+           AND REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = 
+               REPLACE(REPLACE(REPLACE(NEW.cpf, '.', ''), '-', ''), ' ', '')
          )
     );
 
   -- TERCEIRO: Deletar pré-cadastros com mesmo CRM + estado (agora que as referências foram atualizadas)
   DELETE FROM medicos_precadastro 
-  WHERE medico_crm = NEW.medico_crm 
-    AND medico_estado = NEW.medico_estado;
+  WHERE crm = NEW.crm 
+    AND estado = NEW.estado;
   
   -- QUARTO: Deletar pré-cadastros com mesmo CPF (se informado)
-  IF NEW.medico_cpf IS NOT NULL THEN
+  IF NEW.cpf IS NOT NULL THEN
     DELETE FROM medicos_precadastro 
-    WHERE medico_cpf IS NOT NULL 
+    WHERE cpf IS NOT NULL 
       AND (
         -- CPF igual (considerando que pode estar formatado ou não)
-        REPLACE(REPLACE(REPLACE(medico_cpf, '.', ''), '-', ''), ' ', '') = 
-        REPLACE(REPLACE(REPLACE(NEW.medico_cpf, '.', ''), '-', ''), ' ', '')
+        REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = 
+        REPLACE(REPLACE(REPLACE(NEW.cpf, '.', ''), '-', ''), ' ', '')
       );
   END IF;
   
@@ -639,10 +618,6 @@ $$;
 ALTER FUNCTION "public"."corrigir_inconsistencias_vagas"() OWNER TO "postgres";
 
 
-COMMENT ON FUNCTION "public"."corrigir_inconsistencias_vagas"() IS 'Corrige inconsistências encontradas no status de vagas e candidaturas';
-
-
-
 CREATE OR REPLACE FUNCTION "public"."count_candidaturas_total"("vaga_id_param" "uuid") RETURNS integer
     LANGUAGE "sql" STABLE SECURITY DEFINER
     AS $$
@@ -653,10 +628,6 @@ $$;
 
 
 ALTER FUNCTION "public"."count_candidaturas_total"("vaga_id_param" "uuid") OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."count_candidaturas_total"("vaga_id_param" "uuid") IS 'Conta o total de candidaturas de uma vaga, ignorando políticas RLS para dar visibilidade completa aos usuários';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."criar_carteira_digital"("p_medico_id" "uuid") RETURNS TABLE("success" boolean, "message" "text", "new_carteira_id" "uuid")
@@ -767,23 +738,22 @@ BEGIN
       user_phone := '55' || user_phone;
     END IF;
     
-    -- Inserir novo registro na tabela escalista
-    INSERT INTO public.escalista (
-      escalista_id,
-      escalista_nome,
-      escalista_telefone,
-      escalista_email
+    INSERT INTO public.escalistas (
+      id,
+      nome,
+      telefone,
+      email
     )
     VALUES (
-      NEW.id,                -- escalista_id = user_profile.id
-      NEW.displayname,       -- escalista_nome = user_profile.displayname
-      user_phone,            -- escalista_telefone = telefone dos metadados
-      user_email             -- escalista_email = auth.users.email
+      NEW.id,
+      NEW.displayname,
+      user_phone,
+      user_email
     )
-    ON CONFLICT (escalista_id) DO UPDATE SET
-      escalista_nome = NEW.displayname,
-      escalista_telefone = user_phone,
-      escalista_email = user_email;
+    ON CONFLICT (id) DO UPDATE SET
+      nome = NEW.displayname,
+      telefone = user_phone,
+      email = user_email;
   END IF;
   RETURN NEW;
 END;$$;
@@ -1032,32 +1002,32 @@ BEGIN
   novo_medico_id := CASE WHEN (p_update ? 'medico_id') THEN (p_update->>'medico_id')::uuid ELSE NULL END;
   
   FOR vaga IN SELECT * FROM public.vagas WHERE recorrencia_id = p_recorrencia_id LOOP
-    -- Atualizar dados da vaga
+    -- Atualizar dados da vaga (usando nomenclatura correta)
     UPDATE public.vagas SET
-      vagas_hospital = COALESCE((p_update->>'vagas_hospital')::uuid, vagas_hospital),
-      vagas_data = COALESCE((p_update->>'vagas_data')::date, vagas_data),
-      vagas_periodo = COALESCE((p_update->>'vagas_periodo')::uuid, vagas_periodo),
-      vagas_horainicio = COALESCE((p_update->>'vagas_horainicio')::time, vagas_horainicio),
-      vagas_horafim = COALESCE((p_update->>'vagas_horafim')::time, vagas_horafim),
-      vagas_valor = COALESCE((p_update->>'vagas_valor')::integer, vagas_valor),
-      vagas_datapagamento = COALESCE((p_update->>'vagas_datapagamento')::date, vagas_datapagamento),
-      vagas_formarecebimento = COALESCE((p_update->>'vagas_formarecebimento')::uuid, vagas_formarecebimento),
-      vagas_tipo = COALESCE((p_update->>'vagas_tipo')::uuid, vagas_tipo),
-      vagas_observacoes = COALESCE((p_update->>'vagas_observacoes'), vagas_observacoes),
-      vagas_setor = COALESCE((p_update->>'vagas_setor')::uuid, vagas_setor),
-      vagas_escalista = COALESCE((p_update->>'vagas_escalista')::uuid, vagas_escalista),
-      vaga_especialidade = COALESCE((p_update->>'vaga_especialidade')::uuid, vaga_especialidade),
+      hospital_id = COALESCE((p_update->>'hospital_id')::uuid, hospital_id),
+      data = COALESCE((p_update->>'data')::date, data),
+      periodo_id = COALESCE((p_update->>'periodo_id')::uuid, periodo_id),
+      hora_inicio = COALESCE((p_update->>'hora_inicio')::time, hora_inicio),
+      hora_fim = COALESCE((p_update->>'hora_fim')::time, hora_fim),
+      valor = COALESCE((p_update->>'valor')::integer, valor),
+      data_pagamento = COALESCE((p_update->>'data_pagamento')::date, data_pagamento),
+      forma_recebimento_id = COALESCE((p_update->>'forma_recebimento_id')::uuid, forma_recebimento_id),
+      tipos_vaga_id = COALESCE((p_update->>'tipos_vaga_id')::uuid, tipos_vaga_id),
+      observacoes = COALESCE((p_update->>'observacoes'), observacoes),
+      setor_id = COALESCE((p_update->>'setor_id')::uuid, setor_id),
+      escalista_id = COALESCE((p_update->>'escalista_id')::uuid, escalista_id),
+      especialidade_id = COALESCE((p_update->>'especialidade_id')::uuid, especialidade_id),
       grupo_id = COALESCE((p_update->>'grupo_id')::uuid, grupo_id),
       -- ATUALIZAR STATUS DA VAGA baseado no médico designado
-      vagas_status = CASE 
+      status = CASE 
         WHEN (p_update ? 'medico_id') THEN 
           CASE WHEN novo_medico_id IS NOT NULL THEN 'fechada' ELSE 'aberta' END
-        ELSE vagas_status 
+        ELSE status 
       END,
       -- CAMPOS DE AUDITORIA - SEMPRE ATUALIZADOS
-      vagas_updateat = now_brasil,
-      vagas_updateby = p_updateby
-    WHERE vagas_id = vaga.vagas_id;
+      updated_at = now_brasil,
+      updated_by = p_updateby
+    WHERE id = vaga.id;
     
     vagas_atualizadas := vagas_atualizadas + 1;
     
@@ -1067,34 +1037,34 @@ BEGIN
         -- Médico designado: verificar se já existe candidatura aprovada
         SELECT * INTO candidatura_existente 
         FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO'
+        WHERE vagas_id = vaga.id AND status = 'APROVADO'
         LIMIT 1;
         
-        IF candidatura_existente.candidaturas_id IS NOT NULL THEN
+        IF candidatura_existente.id IS NOT NULL THEN
           -- Atualizar candidatura existente
           UPDATE public.candidaturas SET
             medico_id = novo_medico_id,
-            candidaturas_updateat = now_brasil,
-            candidaturas_updateby = p_updateby::text
-          WHERE candidaturas_id = candidatura_existente.candidaturas_id;
+            updated_at = now_brasil,
+            updated_by = p_updateby::text
+          WHERE id = candidatura_existente.id;
           
-          RAISE NOTICE 'Candidatura atualizada para vaga: % (candidatura: %)', vaga.vagas_id, candidatura_existente.candidaturas_id;
+          RAISE NOTICE 'Candidatura atualizada para vaga: % (candidatura: %)', vaga.id, candidatura_existente.id;
         ELSE
           -- Criar nova candidatura aprovada
           INSERT INTO public.candidaturas (
-            medico_id, vagas_id, candidatura_status, candidatos_createdate, candidaturas_updateat, candidaturas_updateby, vagas_valor
+            medico_id, vagas_id, status, created_at, updated_at, updated_by, valor
           ) VALUES (
-            novo_medico_id, vaga.vagas_id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.vagas_valor
+            novo_medico_id, vaga.id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.valor
           );
           
-          RAISE NOTICE 'Nova candidatura aprovada criada para vaga: %', vaga.vagas_id;
+          RAISE NOTICE 'Nova candidatura aprovada criada para vaga: %', vaga.id;
         END IF;
       ELSE
         -- Médico removido: remover candidaturas aprovadas
         DELETE FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO';
+        WHERE vagas_id = vaga.id AND status = 'APROVADO';
         
-        RAISE NOTICE 'Candidaturas aprovadas removidas da vaga: %', vaga.vagas_id;
+        RAISE NOTICE 'Candidaturas aprovadas removidas da vaga: %', vaga.id;
       END IF;
     END IF;
   END LOOP;
@@ -1134,13 +1104,13 @@ BEGIN
   -- Extrair médico_id se presente
   novo_medico_id := CASE WHEN (p_update ? 'medico_id') THEN (p_update->>'medico_id')::uuid ELSE NULL END;
   
-  -- LÓGICA CORRIGIDA: Se há vagas_datapagamento no update, calcular dias baseado na primeira vaga da recorrência
-  IF (p_update ? 'vagas_datapagamento') THEN
+  -- LÓGICA CORRIGIDA: Se há data_pagamento no update, calcular dias baseado na primeira vaga da recorrência
+  IF (p_update ? 'data_pagamento') THEN
     -- Buscar primeira vaga da recorrência para calcular os dias de pagamento originais
-    SELECT v.vagas_data, v.vagas_datapagamento INTO nova_data_plantao, nova_data_pagamento
+    SELECT v.data, v.data_pagamento INTO nova_data_plantao, nova_data_pagamento
     FROM vagas v 
     WHERE v.recorrencia_id = p_recorrencia_id 
-    ORDER BY v.vagas_data 
+    ORDER BY v.data 
     LIMIT 1;
     
     -- Se encontrou dados da primeira vaga, calcular dias
@@ -1159,55 +1129,55 @@ BEGIN
     -- CALCULAR NOVA DATA DE PAGAMENTO PARA CADA VAGA INDIVIDUALMENTE
     IF dias_para_pagamento IS NOT NULL THEN
       -- Recalcular baseado na data específica desta vaga + dias calculados
-      nova_data_pagamento := vaga.vagas_data + (dias_para_pagamento || ' days')::interval;
-      RAISE NOTICE 'Vaga %: Data plantão %, nova data pagamento %', vaga.vagas_id, vaga.vagas_data, nova_data_pagamento;
+      nova_data_pagamento := vaga.data + (dias_para_pagamento || ' days')::interval;
+      RAISE NOTICE 'Vaga %: Data plantão %, nova data pagamento %', vaga.id, vaga.data, nova_data_pagamento;
     ELSE
       -- Usar data do update se não conseguiu calcular dias
-      nova_data_pagamento := COALESCE((p_update->>'vagas_datapagamento')::date, vaga.vagas_datapagamento);
+      nova_data_pagamento := COALESCE((p_update->>'data_pagamento')::date, vaga.data_pagamento);
     END IF;
     
-    -- Atualizar dados da vaga
+    -- Atualizar dados da vaga (usando nomenclatura correta)
     UPDATE public.vagas SET
-      vagas_hospital = COALESCE((p_update->>'vagas_hospital')::uuid, vagas_hospital),
-      vagas_data = COALESCE((p_update->>'vagas_data')::date, vagas_data),
-      vagas_periodo = COALESCE((p_update->>'vagas_periodo')::uuid, vagas_periodo),
-      vagas_horainicio = COALESCE((p_update->>'vagas_horainicio')::time, vagas_horainicio),
-      vagas_horafim = COALESCE((p_update->>'vagas_horafim')::time, vagas_horafim),
-      vagas_valor = COALESCE((p_update->>'vagas_valor')::integer, vagas_valor),
-      vagas_datapagamento = nova_data_pagamento, -- USAR DATA RECALCULADA INDIVIDUALMENTE
-      vagas_formarecebimento = COALESCE((p_update->>'vagas_formarecebimento')::uuid, vagas_formarecebimento),
-      vagas_tipo = COALESCE((p_update->>'vagas_tipo')::uuid, vagas_tipo),
-      vagas_observacoes = COALESCE((p_update->>'vagas_observacoes'), vagas_observacoes),
-      vagas_setor = COALESCE((p_update->>'vagas_setor')::uuid, vagas_setor),
-      vagas_escalista = COALESCE((p_update->>'vagas_escalista')::uuid, vagas_escalista),
-      vaga_especialidade = COALESCE((p_update->>'vaga_especialidade')::uuid, vaga_especialidade),
+      hospital_id = COALESCE((p_update->>'hospital_id')::uuid, hospital_id),
+      data = COALESCE((p_update->>'data')::date, data),
+      periodo_id = COALESCE((p_update->>'periodo_id')::uuid, periodo_id),
+      hora_inicio = COALESCE((p_update->>'hora_inicio')::time, hora_inicio),
+      hora_fim = COALESCE((p_update->>'hora_fim')::time, hora_fim),
+      valor = COALESCE((p_update->>'valor')::integer, valor),
+      data_pagamento = nova_data_pagamento, -- USAR DATA RECALCULADA INDIVIDUALMENTE
+      forma_recebimento_id = COALESCE((p_update->>'forma_recebimento_id')::uuid, forma_recebimento_id),
+      tipos_vaga_id = COALESCE((p_update->>'tipos_vaga_id')::uuid, tipos_vaga_id),
+      observacoes = COALESCE((p_update->>'observacoes'), observacoes),
+      setor_id = COALESCE((p_update->>'setor_id')::uuid, setor_id),
+      escalista_id = COALESCE((p_update->>'escalista_id')::uuid, escalista_id),
+      especialidade_id = COALESCE((p_update->>'especialidade_id')::uuid, especialidade_id),
       grupo_id = COALESCE((p_update->>'grupo_id')::uuid, grupo_id),
       -- ATUALIZAR STATUS DA VAGA baseado no médico designado
-      vagas_status = CASE 
+      status = CASE 
         WHEN (p_update ? 'medico_id') THEN 
           CASE WHEN novo_medico_id IS NOT NULL THEN 'fechada' ELSE 'aberta' END
-        ELSE vagas_status 
+        ELSE status 
       END,
       -- CAMPOS DE AUDITORIA - SEMPRE ATUALIZADOS
-      vagas_updateat = now_brasil,
-      vagas_updateby = p_updateby
-    WHERE vagas_id = vaga.vagas_id;
+      updated_at = now_brasil,
+      updated_by = p_updateby
+    WHERE id = vaga.id;
     
     -- Atualizar benefícios da vaga
-    DELETE FROM public.vagas_beneficio WHERE vagas_id = vaga.vagas_id;
+    DELETE FROM public.vagas_beneficio WHERE vagas_id = vaga.id;
     IF p_beneficios IS NOT NULL AND array_length(p_beneficios, 1) > 0 THEN
       FOR beneficio_id IN SELECT unnest(p_beneficios) LOOP
         INSERT INTO public.vagas_beneficio (vagas_id, beneficio_id)
-        VALUES (vaga.vagas_id, beneficio_id::uuid);
+        VALUES (vaga.id, beneficio_id::uuid);
       END LOOP;
     END IF;
 
     -- Atualizar requisitos da vaga
-    DELETE FROM public.vagas_requisito WHERE vagas_id = vaga.vagas_id;
+    DELETE FROM public.vagas_requisito WHERE vagas_id = vaga.id;
     IF p_requisitos IS NOT NULL AND array_length(p_requisitos, 1) > 0 THEN
       FOR requisito_id IN SELECT unnest(p_requisitos) LOOP
         INSERT INTO public.vagas_requisito (vagas_id, requisito_id)
-        VALUES (vaga.vagas_id, requisito_id::uuid);
+        VALUES (vaga.id, requisito_id::uuid);
       END LOOP;
     END IF;
     
@@ -1219,38 +1189,38 @@ BEGIN
         -- Médico designado: verificar se já existe candidatura aprovada
         SELECT * INTO candidatura_existente 
         FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO'
+        WHERE vagas_id = vaga.id AND status = 'APROVADO'
         LIMIT 1;
         
-        IF candidatura_existente.candidaturas_id IS NOT NULL THEN
+        IF candidatura_existente.id IS NOT NULL THEN
           -- Atualizar candidatura existente
           UPDATE public.candidaturas SET
             medico_id = novo_medico_id,
-            candidaturas_updateat = now_brasil,
-            candidaturas_updateby = p_updateby::text
-          WHERE candidaturas_id = candidatura_existente.candidaturas_id;
+            updated_at = now_brasil,
+            updated_by = p_updateby::text
+          WHERE id = candidatura_existente.id;
           
-          RAISE NOTICE 'Candidatura atualizada para vaga: % (candidatura: %)', vaga.vagas_id, candidatura_existente.candidaturas_id;
+          RAISE NOTICE 'Candidatura atualizada para vaga: % (candidatura: %)', vaga.id, candidatura_existente.id;
         ELSE
           -- Criar nova candidatura aprovada
           INSERT INTO public.candidaturas (
-            medico_id, vagas_id, candidatura_status, candidatos_createdate, candidaturas_updateat, candidaturas_updateby, vagas_valor
+            medico_id, vagas_id, status, created_at, updated_at, updated_by, valor
           ) VALUES (
-            novo_medico_id, vaga.vagas_id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.vagas_valor
+            novo_medico_id, vaga.id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.valor
           );
           
-          RAISE NOTICE 'Nova candidatura aprovada criada para vaga: %', vaga.vagas_id;
+          RAISE NOTICE 'Nova candidatura aprovada criada para vaga: %', vaga.id;
         END IF;
       ELSE
         -- Médico removido: remover candidaturas aprovadas
         DELETE FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO';
+        WHERE vagas_id = vaga.id AND status = 'APROVADO';
         
-        RAISE NOTICE 'Candidaturas aprovadas removidas da vaga: %', vaga.vagas_id;
+        RAISE NOTICE 'Candidaturas aprovadas removidas da vaga: %', vaga.id;
       END IF;
     END IF;
     
-    RAISE NOTICE 'Vaga % atualizada com pagamento em %', vaga.vagas_id, nova_data_pagamento;
+    RAISE NOTICE 'Vaga % atualizada com pagamento em %', vaga.id, nova_data_pagamento;
   END LOOP;
   
   -- Log do resultado
@@ -1292,13 +1262,13 @@ BEGIN
     -- Usar dias passados diretamente como parâmetro
     dias_para_pagamento := p_dias_pagamento;
     RAISE NOTICE 'Usando dias de pagamento especificados: % dias', dias_para_pagamento;
-  ELSIF (p_update ? 'vagas_datapagamento') THEN
+  ELSIF (p_update ? 'data_pagamento') THEN
     -- Tentar calcular baseado na primeira vaga da recorrência
-    SELECT calcular_dias_pagamento(v.vagas_data, v.vagas_datapagamento) 
+    SELECT calcular_dias_pagamento(v.data, v.data_pagamento) 
     INTO dias_para_pagamento
     FROM vagas v 
     WHERE v.recorrencia_id = p_recorrencia_id 
-    ORDER BY v.vagas_data 
+    ORDER BY v.data 
     LIMIT 1;
     
     RAISE NOTICE 'Calculando dias baseado na primeira vaga: % dias', dias_para_pagamento;
@@ -1312,53 +1282,53 @@ BEGIN
     
     -- CALCULAR NOVA DATA DE PAGAMENTO PARA CADA VAGA INDIVIDUALMENTE
     IF dias_para_pagamento IS NOT NULL THEN
-      nova_data_pagamento := vaga.vagas_data + (dias_para_pagamento || ' days')::interval;
+      nova_data_pagamento := vaga.data + (dias_para_pagamento || ' days')::interval;
       RAISE NOTICE 'Vaga %: Data plantão %, nova data pagamento % (+ % dias)', 
-        vaga.vagas_id, vaga.vagas_data, nova_data_pagamento, dias_para_pagamento;
+        vaga.id, vaga.data, nova_data_pagamento, dias_para_pagamento;
     ELSE
-      nova_data_pagamento := COALESCE((p_update->>'vagas_datapagamento')::date, vaga.vagas_datapagamento);
+      nova_data_pagamento := COALESCE((p_update->>'data_pagamento')::date, vaga.data_pagamento);
     END IF;
     
-    -- Atualizar dados da vaga
+    -- Atualizar dados da vaga (usando nomenclatura correta)
     UPDATE public.vagas SET
-      vagas_hospital = COALESCE((p_update->>'vagas_hospital')::uuid, vagas_hospital),
-      vagas_data = COALESCE((p_update->>'vagas_data')::date, vagas_data),
-      vagas_periodo = COALESCE((p_update->>'vagas_periodo')::uuid, vagas_periodo),
-      vagas_horainicio = COALESCE((p_update->>'vagas_horainicio')::time, vagas_horainicio),
-      vagas_horafim = COALESCE((p_update->>'vagas_horafim')::time, vagas_horafim),
-      vagas_valor = COALESCE((p_update->>'vagas_valor')::integer, vagas_valor),
-      vagas_datapagamento = nova_data_pagamento, -- DATA RECALCULADA INDIVIDUALMENTE
-      vagas_formarecebimento = COALESCE((p_update->>'vagas_formarecebimento')::uuid, vagas_formarecebimento),
-      vagas_tipo = COALESCE((p_update->>'vagas_tipo')::uuid, vagas_tipo),
-      vagas_observacoes = COALESCE((p_update->>'vagas_observacoes'), vagas_observacoes),
-      vagas_setor = COALESCE((p_update->>'vagas_setor')::uuid, vagas_setor),
-      vagas_escalista = COALESCE((p_update->>'vagas_escalista')::uuid, vagas_escalista),
-      vaga_especialidade = COALESCE((p_update->>'vaga_especialidade')::uuid, vaga_especialidade),
+      hospital_id = COALESCE((p_update->>'hospital_id')::uuid, hospital_id),
+      data = COALESCE((p_update->>'data')::date, data),
+      periodo_id = COALESCE((p_update->>'periodo_id')::uuid, periodo_id),
+      hora_inicio = COALESCE((p_update->>'hora_inicio')::time, hora_inicio),
+      hora_fim = COALESCE((p_update->>'hora_fim')::time, hora_fim),
+      valor = COALESCE((p_update->>'valor')::integer, valor),
+      data_pagamento = nova_data_pagamento, -- DATA RECALCULADA INDIVIDUALMENTE
+      forma_recebimento_id = COALESCE((p_update->>'forma_recebimento_id')::uuid, forma_recebimento_id),
+      tipos_vaga_id = COALESCE((p_update->>'tipos_vaga_id')::uuid, tipos_vaga_id),
+      observacoes = COALESCE((p_update->>'observacoes'), observacoes),
+      setor_id = COALESCE((p_update->>'setor_id')::uuid, setor_id),
+      escalista_id = COALESCE((p_update->>'escalista_id')::uuid, escalista_id),
+      especialidade_id = COALESCE((p_update->>'especialidade_id')::uuid, especialidade_id),
       grupo_id = COALESCE((p_update->>'grupo_id')::uuid, grupo_id),
-      vagas_status = CASE 
+      status = CASE 
         WHEN (p_update ? 'medico_id') THEN 
           CASE WHEN novo_medico_id IS NOT NULL THEN 'fechada' ELSE 'aberta' END
-        ELSE vagas_status 
+        ELSE status 
       END,
-      vagas_updateat = now_brasil,
-      vagas_updateby = p_updateby
-    WHERE vagas_id = vaga.vagas_id;
+      updated_at = now_brasil,
+      updated_by = p_updateby
+    WHERE id = vaga.id;
     
     -- Atualizar benefícios da vaga
-    DELETE FROM public.vagas_beneficio WHERE vagas_id = vaga.vagas_id;
+    DELETE FROM public.vagas_beneficio WHERE vagas_id = vaga.id;
     IF p_beneficios IS NOT NULL AND array_length(p_beneficios, 1) > 0 THEN
       FOR beneficio_id IN SELECT unnest(p_beneficios) LOOP
         INSERT INTO public.vagas_beneficio (vagas_id, beneficio_id)
-        VALUES (vaga.vagas_id, beneficio_id::uuid);
+        VALUES (vaga.id, beneficio_id::uuid);
       END LOOP;
     END IF;
 
     -- Atualizar requisitos da vaga
-    DELETE FROM public.vagas_requisito WHERE vagas_id = vaga.vagas_id;
+    DELETE FROM public.vagas_requisito WHERE vagas_id = vaga.id;
     IF p_requisitos IS NOT NULL AND array_length(p_requisitos, 1) > 0 THEN
       FOR requisito_id IN SELECT unnest(p_requisitos) LOOP
         INSERT INTO public.vagas_requisito (vagas_id, requisito_id)
-        VALUES (vaga.vagas_id, requisito_id::uuid);
+        VALUES (vaga.id, requisito_id::uuid);
       END LOOP;
     END IF;
     
@@ -1369,25 +1339,25 @@ BEGIN
       IF novo_medico_id IS NOT NULL THEN
         SELECT * INTO candidatura_existente 
         FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO'
+        WHERE vagas_id = vaga.id AND status = 'APROVADO'
         LIMIT 1;
         
-        IF candidatura_existente.candidaturas_id IS NOT NULL THEN
+        IF candidatura_existente.id IS NOT NULL THEN
           UPDATE public.candidaturas SET
             medico_id = novo_medico_id,
-            candidaturas_updateat = now_brasil,
-            candidaturas_updateby = p_updateby::text
-          WHERE candidaturas_id = candidatura_existente.candidaturas_id;
+            updated_at = now_brasil,
+            updated_by = p_updateby::text
+          WHERE id = candidatura_existente.id;
         ELSE
           INSERT INTO public.candidaturas (
-            medico_id, vagas_id, candidatura_status, candidatos_createdate, candidaturas_updateat, candidaturas_updateby, vagas_valor
+            medico_id, vagas_id, status, created_at, updated_at, updated_by, valor
           ) VALUES (
-            novo_medico_id, vaga.vagas_id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.vagas_valor
+            novo_medico_id, vaga.id, 'APROVADO', now_brasil, now_brasil, p_updateby::text, vaga.valor
           );
         END IF;
       ELSE
         DELETE FROM public.candidaturas 
-        WHERE vagas_id = vaga.vagas_id AND candidatura_status = 'APROVADO';
+        WHERE vagas_id = vaga.id AND status = 'APROVADO';
       END IF;
     END IF;
   END LOOP;
@@ -1402,6 +1372,40 @@ $$;
 
 
 ALTER FUNCTION "public"."editar_vagas_recorrencia"("p_recorrencia_id" "uuid", "p_update" "jsonb", "p_updateby" "uuid", "p_beneficios" "text"[], "p_requisitos" "text"[], "p_dias_pagamento" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    -- Verificar se pelo menos um UUID foi fornecido
+    IF array_length(vagas_ids, 1) IS NULL OR array_length(vagas_ids, 1) = 0 THEN
+        RETURN 0;
+    END IF;
+
+    -- Excluir as vagas e contar quantas foram excluídas
+    DELETE FROM vagas
+    WHERE vagas_id = ANY(vagas_ids);
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+
+    -- Retornar quantidade excluída
+    RETURN deleted_count;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Em caso de erro, re-lançar com mensagem mais clara
+        RAISE EXCEPTION 'Erro ao excluir vagas: %', SQLERRM;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) IS 'Função para excluir múltiplas vagas em uma operação, evitando problemas de URL muito longa no cliente Supabase';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid" DEFAULT NULL::"uuid", "p_created_by" "uuid" DEFAULT NULL::"uuid") RETURNS "void"
@@ -1567,6 +1571,451 @@ $$;
 ALTER FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid", "p_beneficios" "text"[], "p_requisitos" "text"[]) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_applications_paginated"("page_number" integer DEFAULT 1, "page_size" integer DEFAULT 10, "hospital_ids" "uuid"[] DEFAULT NULL::"uuid"[], "specialty_ids" "uuid"[] DEFAULT NULL::"uuid"[], "sector_ids" "uuid"[] DEFAULT NULL::"uuid"[], "start_date" "date" DEFAULT NULL::"date", "end_date" "date" DEFAULT NULL::"date", "min_value" numeric DEFAULT NULL::numeric, "max_value" numeric DEFAULT NULL::numeric, "period_ids" "uuid"[] DEFAULT NULL::"uuid"[], "type_ids" "uuid"[] DEFAULT NULL::"uuid"[], "group_ids" "uuid"[] DEFAULT NULL::"uuid"[], "search_text" "text" DEFAULT NULL::"text", "doctor_ids" "uuid"[] DEFAULT NULL::"uuid"[], "application_status_filter" "text"[] DEFAULT NULL::"text"[], "job_status_filter" "text"[] DEFAULT NULL::"text"[], "grade_ids" "uuid"[] DEFAULT NULL::"uuid"[], "order_by" "text" DEFAULT 'candidatura_createdate'::"text", "order_direction" "text" DEFAULT 'DESC'::"text") RETURNS TABLE("data" "jsonb", "pagination" "jsonb")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE 
+  validated_page integer;
+  validated_size integer;
+  total_count bigint;
+  offset_value integer;
+  validated_order_by text;
+  validated_order_direction text;
+  order_clause text;
+BEGIN 
+  validated_page := CASE
+    WHEN page_number < 1 THEN 1
+    ELSE page_number
+  END;
+  
+  validated_size := CASE
+    WHEN page_size < 1 THEN 10
+    WHEN page_size > 100 THEN 100
+    ELSE page_size
+  END;
+  
+  -- Validação dos parâmetros de ordenação (nomes atualizados)
+  validated_order_by := CASE
+    WHEN order_by IN (
+      'candidatura_createdate',
+      'vagas_createdate', 
+      'vagas_data',
+      'vagas_valor',
+      'medico_primeiro_nome',
+      'hospital_nome',
+      'setor_nome',
+      'especialidade_nome',
+      'vagas_periodo_nome',
+      'vagas_status',
+      'candidatura_status'
+    ) THEN order_by
+    ELSE 'candidatura_createdate'
+  END;
+  
+  validated_order_direction := CASE
+    WHEN UPPER(order_direction) IN ('ASC', 'DESC') THEN UPPER(order_direction)
+    ELSE 'DESC'
+  END;
+  
+  offset_value := (validated_page - 1) * validated_size;
+  
+  -- Contagem total de candidaturas (não agrupadas)
+  SELECT COUNT(*) INTO total_count
+  FROM vw_vagas_candidaturas v
+  WHERE v.candidaturas_id IS NOT NULL
+    AND (
+      hospital_ids IS NULL
+      OR v.hospital_id = ANY(hospital_ids)
+    )
+    AND (
+      specialty_ids IS NULL
+      OR v.especialidade_id = ANY(specialty_ids)
+    )
+    AND (
+      sector_ids IS NULL
+      OR v.setor_id = ANY(sector_ids)
+    )
+    AND (
+      period_ids IS NULL
+      OR v.vagas_periodo = ANY(period_ids)
+    )
+    AND (
+      type_ids IS NULL
+      OR v.vagas_tipo = ANY(type_ids)
+    )
+    AND (
+      group_ids IS NULL
+      OR v.grupo_id = ANY(group_ids)
+    )
+    AND (
+      start_date IS NULL
+      OR v.candidatura_createdate >= start_date
+    )
+    AND (
+      end_date IS NULL
+      OR v.candidatura_createdate <= end_date
+    )
+    AND (
+      min_value IS NULL
+      OR v.vagas_valor >= min_value
+    )
+    AND (
+      max_value IS NULL
+      OR v.vagas_valor <= max_value
+    )
+    -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+    AND (
+      doctor_ids IS NULL
+      OR v.medico_id = ANY(doctor_ids)
+    )
+    -- Filtro por status das candidaturas
+    AND (
+      application_status_filter IS NULL
+      OR v.candidatura_status = ANY(application_status_filter)
+    )
+    -- Filtro por status das vagas
+    AND (
+      job_status_filter IS NULL
+      OR v.vagas_status = ANY(job_status_filter)
+    )
+    -- Filtro por grades
+    AND (
+      grade_ids IS NULL
+      OR v.grade_id = ANY(grade_ids)
+    )
+    AND (
+      search_text IS NULL
+      OR v.hospital_nome ILIKE '%' || search_text || '%'
+      OR v.especialidade_nome ILIKE '%' || search_text || '%'
+      OR v.vagas_observacoes ILIKE '%' || search_text || '%'
+      OR v.setor_nome ILIKE '%' || search_text || '%'
+    );
+  
+  RETURN QUERY
+  SELECT COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'candidatura_id',
+          v.candidaturas_id,
+          'candidatura_status',
+          v.candidatura_status,
+          'candidatura_createdate',
+          v.candidatura_createdate,
+          'vaga_salva',
+          v.vaga_salva,
+          'medico_favorito',
+          v.medico_favorito,
+          'vaga',
+          jsonb_build_object(
+            'vagas_id',
+            v.vagas_id,
+            'vagas_data',
+            v.vagas_data,
+            'vagas_horainicio',
+            v.vagas_horainicio,
+            'vagas_horafim',
+            v.vagas_horafim,
+            'vagas_valor',
+            v.vagas_valor,
+            'vagas_status',
+            v.vagas_status,
+            'vagas_observacoes',
+            v.vagas_observacoes,
+            'vagas_datapagamento',
+            v.vagas_datapagamento,
+            'total_candidaturas',
+            v.total_candidaturas,
+            'vagas_createdate',
+            v.vagas_createdate,
+            'vagas_periodo',
+            v.vagas_periodo,
+            'vagas_periodo_nome',
+            v.vagas_periodo_nome,
+            'vagas_tipo',
+            v.vagas_tipo,
+            'vagas_tipo_nome',
+            v.vagas_tipo_nome
+          ),
+          'medico',
+          jsonb_build_object(
+            'medico_id',
+            v.medico_id,
+            'medico_primeiro_nome',
+            v.medico_primeiro_nome,
+            'medico_sobrenome',
+            v.medico_sobrenome,
+            'medico_crm',
+            v.medico_crm,
+            'medico_estado',
+            v.medico_estado,
+            'medico_email',
+            v.medico_email,
+            'medico_telefone',
+            v.medico_telefone
+          ),
+          'hospital',
+          jsonb_build_object(
+            'hospital_id',
+            v.hospital_id,
+            'hospital_nome',
+            v.hospital_nome,
+            'hospital_estado',
+            v.hospital_estado,
+            'hospital_lat',
+            v.hospital_lat,
+            'hospital_log',
+            v.hospital_log,
+            'hospital_end',
+            v.hospital_end,
+            'hospital_avatar',
+            v.hospital_avatar
+          ),
+          'especialidade',
+          jsonb_build_object(
+            'especialidade_id',
+            v.especialidade_id,
+            'especialidade_nome',
+            v.especialidade_nome
+          ),
+          'setor',
+          jsonb_build_object(
+            'setor_id',
+            v.setor_id,
+            'setor_nome',
+            v.setor_nome
+          ),
+          'escalista',
+          jsonb_build_object(
+            'escalista_id',
+            v.escalista_id,
+            'escalista_nome',
+            v.escalista_nome,
+            'escalista_email',
+            v.escalista_email,
+            'escalista_telefone',
+            v.escalista_telefone
+          ),
+          'grupo',
+          jsonb_build_object(
+            'grupo_id',
+            v.grupo_id,
+            'grupo_nome',
+            v.grupo_nome
+          ),
+          'grade',
+          jsonb_build_object(
+            'grade_id',
+            v.grade_id,
+            'grade_nome',
+            v.grade_nome,
+            'grade_cor',
+            v.grade_cor
+          )
+        )
+      ),
+      '[]'::jsonb
+    ) AS data,
+    jsonb_build_object(
+      'current_page',
+      validated_page,
+      'page_size',
+      validated_size,
+      'total_count',
+      total_count,
+      'total_pages',
+      CASE
+        WHEN total_count = 0 THEN 0
+        ELSE CEIL(total_count::numeric / validated_size::numeric)::integer
+      END,
+      'has_previous',
+      validated_page > 1,
+      'has_next',
+      validated_page < CEIL(total_count::numeric / validated_size::numeric)::integer,
+      'previous_page',
+      CASE
+        WHEN validated_page > 1 THEN validated_page - 1
+        ELSE NULL
+      END,
+      'next_page',
+      CASE
+        WHEN validated_page < CEIL(total_count::numeric / validated_size::numeric)::integer THEN validated_page + 1
+        ELSE NULL
+      END
+    ) AS pagination
+  FROM (
+      SELECT *
+      FROM vw_vagas_candidaturas v
+      WHERE v.candidaturas_id IS NOT NULL
+        AND (
+          hospital_ids IS NULL
+          OR v.hospital_id = ANY(hospital_ids)
+        )
+        AND (
+          specialty_ids IS NULL
+          OR v.especialidade_id = ANY(specialty_ids)
+        )
+        AND (
+          sector_ids IS NULL
+          OR v.setor_id = ANY(sector_ids)
+        )
+        AND (
+          period_ids IS NULL
+          OR v.vagas_periodo = ANY(period_ids)
+        )
+        AND (
+          type_ids IS NULL
+          OR v.vagas_tipo = ANY(type_ids)
+        )
+        AND (
+          group_ids IS NULL
+          OR v.grupo_id = ANY(group_ids)
+        )
+        AND (
+          start_date IS NULL
+          OR v.candidatura_createdate >= start_date
+        )
+        AND (
+          end_date IS NULL
+          OR v.candidatura_createdate <= end_date
+        )
+        AND (
+          min_value IS NULL
+          OR v.vagas_valor >= min_value
+        )
+        AND (
+          max_value IS NULL
+          OR v.vagas_valor <= max_value
+        )
+        -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+        AND (
+          doctor_ids IS NULL
+          OR v.medico_id = ANY(doctor_ids)
+        )
+        -- Filtro por status das candidaturas
+        AND (
+          application_status_filter IS NULL
+          OR v.candidatura_status = ANY(application_status_filter)
+        )
+        -- Filtro por status das vagas
+        AND (
+          job_status_filter IS NULL
+          OR v.vagas_status = ANY(job_status_filter)
+        )
+        -- Filtro por grades
+        AND (
+          grade_ids IS NULL
+          OR v.grade_id = ANY(grade_ids)
+        )
+        AND (
+          search_text IS NULL
+          OR v.hospital_nome ILIKE '%' || search_text || '%'
+          OR v.especialidade_nome ILIKE '%' || search_text || '%'
+          OR v.vagas_observacoes ILIKE '%' || search_text || '%'
+          OR v.setor_nome ILIKE '%' || search_text || '%'
+        )
+      ORDER BY 
+        CASE
+          WHEN validated_order_by = 'candidatura_createdate'
+          AND validated_order_direction = 'DESC' THEN v.candidatura_createdate
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'candidatura_createdate'
+          AND validated_order_direction = 'ASC' THEN v.candidatura_createdate
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'vagas_createdate'
+          AND validated_order_direction = 'DESC' THEN v.vagas_createdate
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'vagas_createdate'
+          AND validated_order_direction = 'ASC' THEN v.vagas_createdate
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'vagas_data'
+          AND validated_order_direction = 'DESC' THEN v.vagas_data
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'vagas_data'
+          AND validated_order_direction = 'ASC' THEN v.vagas_data
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'vagas_valor'
+          AND validated_order_direction = 'DESC' THEN v.vagas_valor
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'vagas_valor'
+          AND validated_order_direction = 'ASC' THEN v.vagas_valor
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'medico_primeiro_nome'
+          AND validated_order_direction = 'DESC' THEN v.medico_primeiro_nome
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'medico_primeiro_nome'
+          AND validated_order_direction = 'ASC' THEN v.medico_primeiro_nome
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'hospital_nome'
+          AND validated_order_direction = 'DESC' THEN v.hospital_nome
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'hospital_nome'
+          AND validated_order_direction = 'ASC' THEN v.hospital_nome
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'setor_nome'
+          AND validated_order_direction = 'DESC' THEN v.setor_nome
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'setor_nome'
+          AND validated_order_direction = 'ASC' THEN v.setor_nome
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'especialidade_nome'
+          AND validated_order_direction = 'DESC' THEN v.especialidade_nome
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'especialidade_nome'
+          AND validated_order_direction = 'ASC' THEN v.especialidade_nome
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'vagas_periodo_nome'
+          AND validated_order_direction = 'DESC' THEN v.vagas_periodo_nome
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'vagas_periodo_nome'
+          AND validated_order_direction = 'ASC' THEN v.vagas_periodo_nome
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'vagas_status'
+          AND validated_order_direction = 'DESC' THEN v.vagas_status
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'vagas_status'
+          AND validated_order_direction = 'ASC' THEN v.vagas_status
+        END ASC,
+        CASE
+          WHEN validated_order_by = 'candidatura_status'
+          AND validated_order_direction = 'DESC' THEN v.candidatura_status
+        END DESC,
+        CASE
+          WHEN validated_order_by = 'candidatura_status'
+          AND validated_order_direction = 'ASC' THEN v.candidatura_status
+        END ASC
+      LIMIT validated_size OFFSET offset_value
+    ) v;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_applications_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."get_applications_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") IS 'Busca candidaturas individuais (não agrupadas) com filtros opcionais usando arrays em snake_case. Filtros disponíveis: hospital_ids[], specialty_ids[], sector_ids[], period_ids[], type_ids[], group_ids[], doctor_ids[], application_status_filter[PENDENTE,APROVADO,REPROVADO], job_status_filter[aberta,fechada,cancelada,anunciada], grade_ids[], além de filtros de data, valor e texto. Parâmetros de ordenação: order_by[candidatura_createdate,vagas_createdate,vagas_data,vagas_valor,medico_primeiro_nome,hospital_nome,setor_nome,especialidade_nome,vagas_periodo_nome,vagas_status,candidatura_status], order_direction[ASC,DESC]. Retorna cada candidatura separadamente com informações completas da vaga e médico associados.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."get_cpf"("cpf_input" "text") RETURNS boolean
     LANGUAGE "plpgsql"
     AS $$
@@ -1621,10 +2070,9 @@ BEGIN
     END IF;
 
     -- Buscar o grupo_id
-
         SELECT grupo_id INTO grupo_id_result
-        FROM escalista
-        WHERE escalista_auth_id = current_user_id;
+        FROM escalistas
+        WHERE auth_id = current_user_id;
         
         -- Se encontrou o grupo, retornar
         IF grupo_id_result IS NOT NULL THEN
@@ -1638,10 +2086,6 @@ END;$$;
 
 
 ALTER FUNCTION "public"."get_current_user_grupo_id"() OWNER TO "postgres";
-
-
-COMMENT ON FUNCTION "public"."get_current_user_grupo_id"() IS 'Retorna o grupo_id do usuário autenticado atual';
-
 
 
 CREATE OR REPLACE FUNCTION "public"."get_documento_historico"("p_carteira_id" "uuid") RETURNS TABLE("tipo" "text", "status" boolean, "updated_at" timestamp without time zone, "updated_by" "uuid")
@@ -1706,7 +2150,7 @@ BEGIN
             %I as url,
             %I_updateuserid as usuario_id
         FROM carteira_digital
-        WHERE carteira_id = $1
+        WHERE carteira_id = $$1
         AND %I_updatedate IS NOT NULL',
         v_column_base, v_column_base, v_column_base, v_column_base, v_column_base)
     USING p_carteira_id;
@@ -2003,6 +2447,536 @@ $$;
 ALTER FUNCTION "public"."get_urls_pendentes"("p_carteira_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_vagas_paginated"("page_number" integer DEFAULT 1, "page_size" integer DEFAULT 10, "hospital_ids" "uuid"[] DEFAULT NULL::"uuid"[], "specialty_ids" "uuid"[] DEFAULT NULL::"uuid"[], "sector_ids" "uuid"[] DEFAULT NULL::"uuid"[], "start_date" "date" DEFAULT NULL::"date", "end_date" "date" DEFAULT NULL::"date", "min_value" numeric DEFAULT NULL::numeric, "max_value" numeric DEFAULT NULL::numeric, "period_ids" "uuid"[] DEFAULT NULL::"uuid"[], "type_ids" "uuid"[] DEFAULT NULL::"uuid"[], "group_ids" "uuid"[] DEFAULT NULL::"uuid"[], "search_text" "text" DEFAULT NULL::"text", "doctor_ids" "uuid"[] DEFAULT NULL::"uuid"[], "application_status_filter" "text"[] DEFAULT NULL::"text"[], "job_status_filter" "text"[] DEFAULT NULL::"text"[], "grade_ids" "uuid"[] DEFAULT NULL::"uuid"[], "order_by" "text" DEFAULT 'vagas_data'::"text", "order_direction" "text" DEFAULT 'DESC'::"text") RETURNS TABLE("data" "jsonb", "pagination" "jsonb")
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE 
+  validated_page integer;
+  validated_size integer;
+  total_count bigint;
+  offset_value integer;
+  validated_order_by text;
+  validated_order_direction text;
+  order_clause text;
+BEGIN 
+  validated_page := CASE
+    WHEN page_number < 1 THEN 1
+    ELSE page_number
+  END;
+  
+  validated_size := CASE
+    WHEN page_size < 1 THEN 10
+    WHEN page_size > 100 THEN 100
+    ELSE page_size
+  END;
+  
+  -- Validação dos parâmetros de ordenação
+  validated_order_by := CASE
+    WHEN order_by IN (
+      'vagas_data',
+      'vagas_valor',
+      'hospital_nome',
+      'setor_nome',
+      'especialidade_nome',
+      'vagas_periodo_nome',
+      'vagas_status',
+      'total_candidaturas'
+    ) THEN order_by
+    ELSE 'vagas_createdate'
+  END;
+  
+  validated_order_direction := CASE
+    WHEN UPPER(order_direction) IN ('ASC', 'DESC') THEN UPPER(order_direction)
+    ELSE 'DESC'
+  END;
+  
+  offset_value := (validated_page - 1) * validated_size;
+  
+  WITH vagas_filtradas AS (
+    SELECT DISTINCT v.vagas_id
+    FROM vw_vagas_candidaturas v
+    WHERE 1 = 1
+      AND (
+        hospital_ids IS NULL
+        OR v.hospital_id = ANY(hospital_ids)
+      )
+      AND (
+        specialty_ids IS NULL
+        OR v.especialidade_id = ANY(specialty_ids)
+      )
+      AND (
+        sector_ids IS NULL
+        OR v.setor_id = ANY(sector_ids)
+      )
+      AND (
+        period_ids IS NULL
+        OR v.vagas_periodo = ANY(period_ids)
+      )
+      AND (
+        type_ids IS NULL
+        OR v.vagas_tipo = ANY(type_ids)
+      )
+      AND (
+        group_ids IS NULL
+        OR v.grupo_id = ANY(group_ids)
+      )
+      AND (
+        start_date IS NULL
+        OR v.vagas_data >= start_date
+      )
+      AND (
+        end_date IS NULL
+        OR v.vagas_data <= end_date
+      )
+      AND (
+        min_value IS NULL
+        OR v.vagas_valor >= min_value
+      )
+      AND (
+        max_value IS NULL
+        OR v.vagas_valor <= max_value
+      )
+      -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+      AND (
+        doctor_ids IS NULL
+        OR v.medico_id = ANY(doctor_ids)
+      )
+      -- Filtro por status das candidaturas
+      AND (
+        application_status_filter IS NULL
+        OR v.candidatura_status = ANY(application_status_filter)
+      )
+      -- Filtro por status das vagas
+      AND (
+        job_status_filter IS NULL
+        OR v.vagas_status = ANY(job_status_filter)
+      )
+      -- Filtro por grades
+      AND (
+        grade_ids IS NULL
+        OR v.grade_id = ANY(grade_ids)
+      )
+      AND (
+        search_text IS NULL
+        OR v.hospital_nome ILIKE '%' || search_text || '%'
+        OR v.especialidade_nome ILIKE '%' || search_text || '%'
+        OR v.vagas_observacoes ILIKE '%' || search_text || '%'
+        OR v.setor_nome ILIKE '%' || search_text || '%'
+      )
+  )
+  SELECT COUNT(*) INTO total_count
+  FROM vagas_filtradas;
+  
+  RETURN QUERY 
+  WITH vagas_agrupadas AS (
+    SELECT v.vagas_id,
+      (array_agg(v.vagas_data)) [1] AS vagas_data,
+      (array_agg(v.vagas_horainicio)) [1] AS vagas_horainicio,
+      (array_agg(v.vagas_horafim)) [1] AS vagas_horafim,
+      (array_agg(v.vagas_valor)) [1] AS vagas_valor,
+      (array_agg(v.vagas_status)) [1] AS vagas_status,
+      (array_agg(v.vagas_observacoes)) [1] AS vagas_observacoes,
+      (array_agg(v.vagas_datapagamento)) [1] AS vagas_datapagamento,
+      (array_agg(v.total_candidaturas)) [1] AS total_candidaturas,
+      (array_agg(v.vagas_createdate)) [1] AS vagas_createdate,
+      (array_agg(v.vagas_periodo)) [1] AS vagas_periodo,
+      (array_agg(v.vagas_periodo_nome)) [1] AS vagas_periodo_nome,
+      (array_agg(v.vagas_tipo)) [1] AS vagas_tipo,
+      (array_agg(v.vagas_tipo_nome)) [1] AS vagas_tipo_nome,
+      (array_agg(v.hospital_id)) [1] AS hospital_id,
+      (array_agg(v.hospital_nome)) [1] AS hospital_nome,
+      (array_agg(v.hospital_estado)) [1] AS hospital_estado,
+      (array_agg(v.hospital_lat)) [1] AS hospital_lat,
+      (array_agg(v.hospital_log)) [1] AS hospital_log,
+      (array_agg(v.hospital_end)) [1] AS hospital_end,
+      (array_agg(v.hospital_avatar)) [1] AS hospital_avatar,
+      (array_agg(v.especialidade_id)) [1] AS especialidade_id,
+      (array_agg(v.especialidade_nome)) [1] AS especialidade_nome,
+      (array_agg(v.setor_id)) [1] AS setor_id,
+      (array_agg(v.setor_nome)) [1] AS setor_nome,
+      (array_agg(v.escalista_id)) [1] AS escalista_id,
+      (array_agg(v.escalista_nome)) [1] AS escalista_nome,
+      (array_agg(v.escalista_email)) [1] AS escalista_email,
+      (array_agg(v.escalista_telefone)) [1] AS escalista_telefone,
+      (array_agg(v.grupo_id)) [1] AS grupo_id,
+      (array_agg(v.grupo_nome)) [1] AS grupo_nome,
+      (array_agg(v.grade_id)) [1] AS grade_id,
+      (array_agg(v.grade_nome)) [1] AS grade_nome,
+      (array_agg(v.grade_cor)) [1] AS grade_cor,
+      array_agg(
+        CASE
+          WHEN v.candidaturas_id IS NOT NULL THEN jsonb_build_object(
+            'candidaturas_id',
+            v.candidaturas_id,
+            'candidatura_status',
+            v.candidatura_status,
+            'candidatura_createdate',
+            v.candidatura_createdate,
+            'vaga_salva',
+            v.vaga_salva,
+            'medico_favorito',
+            v.medico_favorito,
+            'medico_id',
+            v.medico_id,
+            'medico_primeiro_nome',
+            v.medico_primeiro_nome,
+            'medico_sobrenome',
+            v.medico_sobrenome,
+            'medico_crm',
+            v.medico_crm,
+            'medico_estado',
+            v.medico_estado,
+            'medico_email',
+            v.medico_email,
+            'medico_telefone',
+            v.medico_telefone
+          )
+          ELSE NULL
+        END
+        ORDER BY v.candidatura_createdate DESC
+      ) FILTER (
+        WHERE v.candidaturas_id IS NOT NULL
+      ) AS candidaturas_list
+    FROM vw_vagas_candidaturas v
+    WHERE 1 = 1
+      AND (
+        hospital_ids IS NULL
+        OR v.hospital_id = ANY(hospital_ids)
+      )
+      AND (
+        specialty_ids IS NULL
+        OR v.especialidade_id = ANY(specialty_ids)
+      )
+      AND (
+        sector_ids IS NULL
+        OR v.setor_id = ANY(sector_ids)
+      )
+      AND (
+        period_ids IS NULL
+        OR v.vagas_periodo = ANY(period_ids)
+      )
+      AND (
+        type_ids IS NULL
+        OR v.vagas_tipo = ANY(type_ids)
+      )
+      AND (
+        group_ids IS NULL
+        OR v.grupo_id = ANY(group_ids)
+      )
+      AND (
+        start_date IS NULL
+        OR v.vagas_data >= start_date
+      )
+      AND (
+        end_date IS NULL
+        OR v.vagas_data <= end_date
+      )
+      AND (
+        min_value IS NULL
+        OR v.vagas_valor >= min_value
+      )
+      AND (
+        max_value IS NULL
+        OR v.vagas_valor <= max_value
+      )
+      -- Filtro por médicos (incluindo médicos regulares e pré-cadastro)
+      AND (
+        doctor_ids IS NULL
+        OR v.medico_id = ANY(doctor_ids)
+      )
+      -- Filtro por status das candidaturas
+      AND (
+        application_status_filter IS NULL
+        OR v.candidatura_status = ANY(application_status_filter)
+      )
+      -- Filtro por status das vagas
+      AND (
+        job_status_filter IS NULL
+        OR v.vagas_status = ANY(job_status_filter)
+      )
+      -- Filtro por grades
+      AND (
+        grade_ids IS NULL
+        OR v.grade_id = ANY(grade_ids)
+      )
+      AND (
+        search_text IS NULL
+        OR v.hospital_nome ILIKE '%' || search_text || '%'
+        OR v.especialidade_nome ILIKE '%' || search_text || '%'
+        OR v.vagas_observacoes ILIKE '%' || search_text || '%'
+        OR v.setor_nome ILIKE '%' || search_text || '%'
+      )
+    GROUP BY v.vagas_id
+    ORDER BY 
+      CASE
+        WHEN validated_order_by = 'vagas_data'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.vagas_data)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'vagas_data'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.vagas_data)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'vagas_valor'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.vagas_valor)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'vagas_valor'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.vagas_valor)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'hospital_nome'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.hospital_nome)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'hospital_nome'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.hospital_nome)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'setor_nome'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.setor_nome)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'setor_nome'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.setor_nome)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'especialidade_nome'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.especialidade_nome)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'especialidade_nome'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.especialidade_nome)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'vagas_periodo_nome'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.vagas_periodo_nome)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'vagas_periodo_nome'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.vagas_periodo_nome)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'vagas_status'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.vagas_status)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'vagas_status'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.vagas_status)) [1]
+      END ASC,
+      CASE
+        WHEN validated_order_by = 'total_candidaturas'
+        AND validated_order_direction = 'DESC' THEN (array_agg(v.total_candidaturas)) [1]
+      END DESC,
+      CASE
+        WHEN validated_order_by = 'total_candidaturas'
+        AND validated_order_direction = 'ASC' THEN (array_agg(v.total_candidaturas)) [1]
+      END ASC
+    LIMIT validated_size OFFSET offset_value
+  )
+  SELECT COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'vagas_id',
+          v.vagas_id,
+          'vagas_data',
+          v.vagas_data,
+          'vagas_horainicio',
+          v.vagas_horainicio,
+          'vagas_horafim',
+          v.vagas_horafim,
+          'vagas_valor',
+          v.vagas_valor,
+          'vagas_status',
+          v.vagas_status,
+          'vagas_observacoes',
+          v.vagas_observacoes,
+          'vagas_datapagamento',
+          v.vagas_datapagamento,
+          'total_candidaturas',
+          v.total_candidaturas,
+          'vagas_createdate',
+          v.vagas_createdate,
+          'vagas_periodo',
+          v.vagas_periodo,
+          'vagas_periodo_nome',
+          v.vagas_periodo_nome,
+          'vagas_tipo',
+          v.vagas_tipo,
+          'vagas_tipo_nome',
+          v.vagas_tipo_nome,
+          'hospital',
+          jsonb_build_object(
+            'hospital_id',
+            v.hospital_id,
+            'hospital_nome',
+            v.hospital_nome,
+            'hospital_estado',
+            v.hospital_estado,
+            'hospital_lat',
+            v.hospital_lat,
+            'hospital_log',
+            v.hospital_log,
+            'hospital_end',
+            v.hospital_end,
+            'hospital_avatar',
+            v.hospital_avatar
+          ),
+          'especialidade',
+          jsonb_build_object(
+            'especialidade_id',
+            v.especialidade_id,
+            'especialidade_nome',
+            v.especialidade_nome
+          ),
+          'setor',
+          jsonb_build_object(
+            'setor_id',
+            v.setor_id,
+            'setor_nome',
+            v.setor_nome
+          ),
+          'escalista',
+          jsonb_build_object(
+            'escalista_id',
+            v.escalista_id,
+            'escalista_nome',
+            v.escalista_nome,
+            'escalista_email',
+            v.escalista_email,
+            'escalista_telefone',
+            v.escalista_telefone
+          ),
+          'grupo',
+          jsonb_build_object(
+            'grupo_id',
+            v.grupo_id,
+            'grupo_nome',
+            v.grupo_nome
+          ),
+          'candidaturas',
+          COALESCE(
+            array_to_json(v.candidaturas_list)::jsonb,
+            '[]'::jsonb
+          ),
+          'grade',
+          jsonb_build_object(
+            'grade_id',
+            v.grade_id,
+            'grade_nome',
+            v.grade_nome,
+            'grade_cor',
+            v.grade_cor
+          )
+        )
+        ORDER BY 
+          CASE
+            WHEN validated_order_by = 'vagas_data'
+            AND validated_order_direction = 'DESC' THEN v.vagas_data
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'vagas_data'
+            AND validated_order_direction = 'ASC' THEN v.vagas_data
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'vagas_valor'
+            AND validated_order_direction = 'DESC' THEN v.vagas_valor
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'vagas_valor'
+            AND validated_order_direction = 'ASC' THEN v.vagas_valor
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'hospital_nome'
+            AND validated_order_direction = 'DESC' THEN v.hospital_nome
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'hospital_nome'
+            AND validated_order_direction = 'ASC' THEN v.hospital_nome
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'setor_nome'
+            AND validated_order_direction = 'DESC' THEN v.setor_nome
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'setor_nome'
+            AND validated_order_direction = 'ASC' THEN v.setor_nome
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'especialidade_nome'
+            AND validated_order_direction = 'DESC' THEN v.especialidade_nome
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'especialidade_nome'
+            AND validated_order_direction = 'ASC' THEN v.especialidade_nome
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'vagas_periodo_nome'
+            AND validated_order_direction = 'DESC' THEN v.vagas_periodo_nome
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'vagas_periodo_nome'
+            AND validated_order_direction = 'ASC' THEN v.vagas_periodo_nome
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'vagas_status'
+            AND validated_order_direction = 'DESC' THEN v.vagas_status
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'vagas_status'
+            AND validated_order_direction = 'ASC' THEN v.vagas_status
+          END ASC,
+          CASE
+            WHEN validated_order_by = 'total_candidaturas'
+            AND validated_order_direction = 'DESC' THEN v.total_candidaturas
+          END DESC,
+          CASE
+            WHEN validated_order_by = 'total_candidaturas'
+            AND validated_order_direction = 'ASC' THEN v.total_candidaturas
+          END ASC
+      ),
+      '[]'::jsonb
+    ) AS data,
+    jsonb_build_object(
+      'current_page',
+      validated_page,
+      'page_size',
+      validated_size,
+      'total_count',
+      total_count,
+      'total_pages',
+      CASE
+        WHEN total_count = 0 THEN 0
+        ELSE CEIL(total_count::numeric / validated_size::numeric)::integer
+      END,
+      'has_previous',
+      validated_page > 1,
+      'has_next',
+      validated_page < CEIL(total_count::numeric / validated_size::numeric)::integer,
+      'previous_page',
+      CASE
+        WHEN validated_page > 1 THEN validated_page - 1
+        ELSE NULL
+      END,
+      'next_page',
+      CASE
+        WHEN validated_page < CEIL(total_count::numeric / validated_size::numeric)::integer THEN validated_page + 1
+        ELSE NULL
+      END
+    ) AS pagination
+  FROM vagas_agrupadas v;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_vagas_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."get_vagas_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") IS 'Busca vagas agrupadas com suas candidaturas usando filtros opcionais. Filtros disponíveis: hospital_ids[], specialty_ids[], sector_ids[], period_ids[], type_ids[], group_ids[], doctor_ids[], application_status_filter[PENDENTE,APROVADO,REPROVADO], job_status_filter[aberta,fechada,cancelada,anunciada], grade_ids[], além de filtros de data, valor e texto. Parâmetros de ordenação: order_by[vagas_createdate,vagas_data,vagas_valor,hospital_nome,setor_nome,especialidade_nome,vagas_periodo_nome,vagas_status,total_candidaturas], order_direction[ASC,DESC]. Retorna vagas agrupadas com array de candidaturas associadas.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."getidfromemail"("e_mail" "text") RETURNS "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     AS $$
@@ -2043,7 +3017,7 @@ ALTER FUNCTION "public"."getuserprofile"("user_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."handle_grades_updated_at"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql"
     AS $$
 BEGIN
   NEW.updated_at = TIMEZONE('utc'::text, NOW());
@@ -2295,51 +3269,6 @@ $$;
 ALTER FUNCTION "public"."reprovar_documento"("p_carteira_id" "uuid", "p_tipo" "text", "p_motivo" "text", "p_user_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."sync_candidaturas_medico_id"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    -- CENÁRIO 1: App antigo enviou medicos_id, mas não medico_id
-    IF NEW.medicos_id IS NOT NULL AND NEW.medico_id IS NULL THEN
-      NEW.medico_id = NEW.medicos_id;
-    
-    -- CENÁRIO 2: App novo enviou medico_id, mas não medicos_id  
-    ELSIF NEW.medico_id IS NOT NULL AND NEW.medicos_id IS NULL THEN
-      NEW.medicos_id = NEW.medico_id;
-    
-    -- CENÁRIO 3: Nenhum dos dois foi enviado (erro)
-    ELSIF NEW.medico_id IS NULL AND NEW.medicos_id IS NULL THEN
-      RAISE EXCEPTION 'É obrigatório enviar medico_id ou medicos_id';
-    
-    -- CENÁRIO 4: Ambos foram enviados (validar se são iguais)
-    ELSIF NEW.medico_id IS NOT NULL AND NEW.medicos_id IS NOT NULL THEN
-      IF NEW.medico_id != NEW.medicos_id THEN
-        RAISE EXCEPTION 'medico_id e medicos_id devem ser iguais quando ambos são enviados';
-      END IF;
-      -- Se são iguais, mantém como está
-    END IF;
-    
-  ELSIF TG_OP = 'UPDATE' THEN
-    -- Se medico_id foi alterado, sincroniza para medicos_id
-    IF NEW.medico_id IS DISTINCT FROM OLD.medico_id THEN
-      NEW.medicos_id = NEW.medico_id;
-    END IF;
-    
-    -- Se medicos_id foi alterado e medico_id não foi, sincroniza medicos_id para medico_id
-    IF NEW.medicos_id IS DISTINCT FROM OLD.medicos_id AND NEW.medico_id IS NOT DISTINCT FROM OLD.medico_id THEN
-      NEW.medico_id = NEW.medicos_id;
-    END IF;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."sync_candidaturas_medico_id"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."sync_pagamentos_medico_id"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -2474,10 +3403,10 @@ BEGIN
     -- Construir query de atualização
     v_sql := format('
         UPDATE carteira_digital 
-        SET %I = $1,
-            %I = $2,
-            %I = $3
-        WHERE carteira_id = $4
+        SET %I = $$1,
+            %I = $$2,
+            %I = $$3
+        WHERE carteira_id = $$4
         RETURNING true', 
         v_status_column, v_update_date, v_update_user);
     
@@ -2538,8 +3467,8 @@ BEGIN
     -- Construir query
     v_sql := format('
         UPDATE carteira_digital 
-        SET %I = $1
-        WHERE carteira_id = $2', 
+        SET %I = $$1
+        WHERE carteira_id = $$2', 
         v_column_name);
     
     -- Log da query
@@ -2564,9 +3493,9 @@ CREATE OR REPLACE FUNCTION "public"."update_especialidade_nome"() RETURNS "trigg
     LANGUAGE "plpgsql"
     AS $$
 BEGIN
-    SELECT esp.especialidade_nome INTO NEW.especialidade_nome
+    SELECT esp.nome INTO NEW.especialidade_nome
     FROM public.especialidades esp
-    WHERE esp.especialidade_id = NEW.medico_especialidade;
+    WHERE esp.id = NEW.especialidade_id;
     RETURN NEW;
 END;
 $$;
@@ -2640,19 +3569,18 @@ ALTER FUNCTION "public"."update_phone_forotp"("user_id" "uuid", "areacodeindex" 
 
 
 CREATE OR REPLACE FUNCTION "public"."update_total_candidaturas"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
+    LANGUAGE "plpgsql"
     AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
         UPDATE public.vagas
-        SET vagas_totalcandidaturas = vagas_totalcandidaturas + 1
-        WHERE vagas_id = NEW.vagas_id;
+        SET total_candidaturas = total_candidaturas + 1
+        WHERE id = NEW.vagas_id;
     ELSIF TG_OP = 'DELETE' THEN
         BEGIN
             UPDATE public.vagas
-            SET vagas_totalcandidaturas = GREATEST(vagas_totalcandidaturas - 1, 0)
-            WHERE vagas_id = OLD.vagas_id;
+            SET total_candidaturas = GREATEST(total_candidaturas - 1, 0)
+            WHERE id = OLD.vagas_id;
         EXCEPTION WHEN OTHERS THEN
             RAISE NOTICE 'Erro ao atualizar vagas durante exclusão: %', SQLERRM;
         END;
@@ -2667,12 +3595,13 @@ ALTER FUNCTION "public"."update_total_candidaturas"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."update_total_plantoes_medico"() RETURNS "trigger"
     LANGUAGE "plpgsql"
+    SET "search_path" TO 'public'
     AS $$
 BEGIN
-    IF NEW.candidatura_status = 'CONFIRMADO' THEN
+    IF NEW.status = 'CONFIRMADO' THEN
         UPDATE medicos 
-        SET medico_totalplantoes = medico_totalplantoes + 1
-        WHERE medico_id = NEW.medicos_id;
+        SET total_plantoes = total_plantoes + 1
+        WHERE medico_id = NEW.medico_id;
     END IF;
     RETURN NULL;
 END;
@@ -2727,8 +3656,9 @@ ALTER FUNCTION "public"."validar_localizacao_medico"("p_hospital_id" "uuid", "p_
 
 
 CREATE OR REPLACE FUNCTION "public"."validate_checkin_timing"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$DECLARE
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
     vaga_start_time TIME;
     vaga_end_time TIME;
     vaga_date DATE;
@@ -2754,10 +3684,10 @@ BEGIN
     END IF;
 
     -- Buscar informações da vaga
-    SELECT v.vagas_data, v.vagas_horainicio, v.vagas_horafim
+    SELECT v.data, v.hora_inicio, v.hora_fim
     INTO vaga_date, vaga_start_time, vaga_end_time
     FROM vagas v 
-    WHERE v.vagas_id = NEW.vagas_id;
+    WHERE v.id = NEW.vaga_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'ERRO Vaga não encontrado.';
@@ -2767,9 +3697,9 @@ BEGIN
     SELECT EXISTS(
         SELECT 1 
         FROM candidaturas c 
-        WHERE c.vagas_id = NEW.vagas_id 
+        WHERE c.vagas_id = NEW.vaga_id 
         AND c.medico_id = NEW.medico_id 
-        AND c.candidatura_status = 'APROVADO'
+        AND c.status = 'APROVADO'
     ) INTO candidatura_aprovada;
 
     IF NOT candidatura_aprovada THEN
@@ -2780,7 +3710,7 @@ BEGIN
     IF EXISTS(
         SELECT 1 
         FROM checkin_checkout cc 
-        WHERE cc.vagas_id = NEW.vagas_id 
+        WHERE cc.vaga_id = NEW.vaga_id 
         AND cc.medico_id = NEW.medico_id
     ) THEN
         RAISE EXCEPTION 'ERRO Check-in já realizado para esta vaga.';
@@ -2812,14 +3742,15 @@ BEGIN
         
         RETURN NEW;
     END IF;
-END;$$;
+END;
+$$;
 
 
 ALTER FUNCTION "public"."validate_checkin_timing"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."validate_checkout_timing"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
+    LANGUAGE "plpgsql"
     AS $$
 DECLARE
     vaga_start_time TIME;
@@ -2847,10 +3778,10 @@ BEGIN
     END IF;
 
     -- Buscar informações da vaga
-    SELECT v.vagas_data, v.vagas_horainicio, v.vagas_horafim
+    SELECT v.data, v.hora_inicio, v.hora_fim
     INTO vaga_date, vaga_start_time, vaga_end_time
     FROM vagas v 
-    WHERE v.vagas_id = NEW.vagas_id;
+    WHERE v.id = NEW.vaga_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'ERRO Vaga não encontrado.';
@@ -2860,9 +3791,9 @@ BEGIN
     SELECT EXISTS(
         SELECT 1 
         FROM candidaturas c 
-        WHERE c.vagas_id = NEW.vagas_id 
+        WHERE c.vagas_id = NEW.vaga_id 
         AND c.medico_id = NEW.medico_id 
-        AND c.candidatura_status = 'APROVADO'
+        AND c.status = 'APROVADO'
     ) INTO candidatura_aprovada;
 
     IF NOT candidatura_aprovada THEN
@@ -2873,7 +3804,7 @@ BEGIN
     IF NOT EXISTS(
         SELECT 1 
         FROM checkin_checkout cc 
-        WHERE cc.vagas_id = NEW.vagas_id 
+        WHERE cc.vaga_id = NEW.vaga_id 
         AND cc.medico_id = NEW.medico_id
     ) THEN
         RAISE EXCEPTION 'ERRO Check-in ainda não realizado para esta vaga.';
@@ -2913,74 +3844,227 @@ ALTER FUNCTION "public"."validate_checkout_timing"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."verificar_conflito_antes_candidatura"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public'
+    LANGUAGE "plpgsql"
     AS $$
 DECLARE
+    medico_userid uuid;
     conflito_encontrado boolean := false;
     vaga_data date;
     vaga_inicio time;
     vaga_fim time;
     vaga_conflitante_info text;
-    current_role text;
-BEGIN
-    -- Verificar o role atual do usuário
-    SELECT auth.role() INTO current_role;
+    current_user_id uuid;
+    current_user_role text;
     
-    -- Só aplicar verificações para usuários authenticated
-    -- Roles de serviço podem trabalhar sem amarras
-    IF current_role != 'authenticated' THEN
-        RETURN NEW;
+    -- Adicionar variáveis para timestamps
+    vaga_inicio_ts timestamp;
+    vaga_fim_ts timestamp;
+BEGIN
+    
+    -- Verificar o role atual do usuário
+    current_user_id := auth.uid();
+    RAISE NOTICE 'Usuário atual: %', current_user_id;
+
+    -- Verificar se o usuário existe no user_profile
+    SELECT role INTO current_user_role
+    FROM user_profile
+    WHERE id = current_user_id;
+
+    -- Buscar dados da vaga
+    SELECT 
+        -- Determinar qual medico_id usar baseado na lógica do sistema
+        CASE 
+            WHEN NEW.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND NEW.medico_precadastro_id IS NOT NULL 
+            THEN NEW.medico_precadastro_id
+            ELSE NEW.medico_id
+        END,
+        v.data, 
+        v.hora_inicio, 
+        v.hora_fim
+    INTO medico_userid, vaga_data, vaga_inicio, vaga_fim
+    FROM vagas v
+    WHERE v.id = NEW.vagas_id;
+    
+    -- CONVERTER para timestamps considerando turnos noturnos
+    vaga_inicio_ts := vaga_data + vaga_inicio;
+    
+    -- Se hora fim <= hora início, é turno noturno (vai para o dia seguinte)
+    IF vaga_fim <= vaga_inicio THEN
+        vaga_fim_ts := (vaga_data + INTERVAL '1 day') + vaga_fim;
+    ELSE
+        vaga_fim_ts := vaga_data + vaga_fim;
     END IF;
     
-    -- Buscar informações da vaga
-    SELECT v.vagas_data, v.vagas_horainicio, v.vagas_horafim
-    INTO vaga_data, vaga_inicio, vaga_fim
-    FROM vagas v
-    WHERE v.vagas_id = NEW.vagas_id;
-    
     -- VERIFICAÇÃO 1: Impedir candidatura em vagas com data passada
-    IF vaga_data < CURRENT_DATE THEN
+    IF vaga_data < CURRENT_DATE AND current_user_role = 'free' THEN
         RAISE EXCEPTION 'CANDIDATURA BLOQUEADA: Não é possível se candidatar em vaga com data passada. Data da vaga: %', vaga_data;
     END IF;
     
-    -- VERIFICAÇÃO 2: Verificar conflitos de horário
+    -- VERIFICAÇÃO 2: Verificar conflitos de horário considerando medico_id e medico_precadastro_id
     SELECT 
         EXISTS (
             SELECT 1
             FROM candidaturas c
-            JOIN vagas v ON c.vagas_id = v.vagas_id
-            WHERE c.medico_id = NEW.medico_id
-            AND c.candidatura_status = 'APROVADO'
-            AND v.vagas_data = vaga_data
-            AND v.vagas_horainicio < vaga_fim 
-            AND vaga_inicio < v.vagas_horafim
+            JOIN vagas v ON c.vagas_id = v.id
+            WHERE (
+                -- Para médicos normais
+                (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+                OR
+                -- Para médicos pré-cadastrados
+                (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+            )
+            AND c.status = 'APROVADO'
+            AND (
+                -- Usar OVERLAPS com timestamps calculados
+                (v.data + v.hora_inicio, 
+                 CASE 
+                     WHEN v.hora_fim <= v.hora_inicio 
+                     THEN (v.data + INTERVAL '1 day') + v.hora_fim
+                     ELSE v.data + v.hora_fim
+                 END
+                ) OVERLAPS 
+                (vaga_inicio_ts, vaga_fim_ts)
+            )
         ),
         (
-            SELECT 'Plantão já aprovado: ' || v.vagas_data || ' das ' || v.vagas_horainicio || ' às ' || v.vagas_horafim
+            SELECT 'Plantão já aprovado: ' || v.data || ' das ' || v.hora_inicio || ' às ' || v.hora_fim ||
+                   CASE WHEN v.hora_fim <= v.hora_inicio THEN ' (madrugada)' ELSE '' END
             FROM candidaturas c
-            JOIN vagas v ON c.vagas_id = v.vagas_id
-            WHERE c.medico_id = NEW.medico_id
-            AND c.candidatura_status = 'APROVADO'
-            AND v.vagas_data = vaga_data
-            AND v.vagas_horainicio < vaga_fim 
-            AND vaga_inicio < v.vagas_horafim
+            JOIN vagas v ON c.vagas_id = v.id
+            WHERE (
+                -- Para médicos normais
+                (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+                OR
+                -- Para médicos pré-cadastrados
+                (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+            )
+            AND c.status = 'APROVADO'
+            AND (
+                (v.data + v.hora_inicio, 
+                 CASE 
+                     WHEN v.hora_fim <= v.hora_inicio 
+                     THEN (v.data + INTERVAL '1 day') + v.hora_fim
+                     ELSE v.data + v.hora_fim
+                 END
+                ) OVERLAPS 
+                (vaga_inicio_ts, vaga_fim_ts)
+            )
             LIMIT 1
         )
     INTO conflito_encontrado, vaga_conflitante_info;
-    
+           
     -- Bloquear se houver conflito de horário
     IF conflito_encontrado THEN
-        RAISE EXCEPTION 'CONFLITO DE HORÁRIO: % | Nova candidatura: % das % às %', 
-            vaga_conflitante_info, vaga_data, vaga_inicio, vaga_fim;
+        RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO: %', vaga_conflitante_info;
     END IF;
     
-    RETURN NEW;
+    -- Se chegou até aqui, as validações passaram
+    RETURN NEW;  -- Para trigger
+    
 END;
 $$;
 
 
 ALTER FUNCTION "public"."verificar_conflito_antes_candidatura"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."verificar_conflito_vaga_designada"("p_medico_id" "uuid", "p_data" "date", "p_hora_inicio" time without time zone, "p_hora_fim" time without time zone) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  medico_userid uuid;
+  conflito_encontrado boolean := false;
+  vaga_data date;
+  vaga_inicio time;
+  vaga_fim time;
+  vaga_conflitante_info text;
+  current_user_id uuid;
+  current_user_role text;
+  
+  -- Adicionar variáveis para timestamps
+  vaga_inicio_ts timestamp;
+  vaga_fim_ts timestamp;
+
+BEGIN
+  
+  medico_userid := p_medico_id;
+  vaga_data := p_data;
+  vaga_inicio := p_hora_inicio;
+  vaga_fim := p_hora_fim;
+
+  -- CONVERTER para timestamps considerando turnos noturnos
+  vaga_inicio_ts := vaga_data + vaga_inicio;
+  
+  -- Se hora fim <= hora início, é turno noturno (vai para o dia seguinte)
+  IF vaga_fim <= vaga_inicio THEN
+      vaga_fim_ts := (vaga_data + INTERVAL '1 day') + vaga_fim;
+  ELSE
+      vaga_fim_ts := vaga_data + vaga_fim;
+  END IF;
+  
+  -- Verificar conflitos de horário considerando medico_id e medico_precadastro_id
+  SELECT 
+      EXISTS (
+          SELECT 1
+          FROM candidaturas c
+          JOIN vagas v ON c.vagas_id = v.vagas_id
+          WHERE (
+              -- Para médicos normais
+              (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+              OR
+              -- Para médicos pré-cadastrados
+              (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+          )
+          AND c.candidatura_status = 'APROVADO'
+          AND (
+              -- Usar OVERLAPS com timestamps calculados
+              (v.vagas_data + v.vagas_horainicio, 
+               CASE 
+                   WHEN v.vagas_horafim <= v.vagas_horainicio 
+                   THEN (v.vagas_data + INTERVAL '1 day') + v.vagas_horafim
+                   ELSE v.vagas_data + v.vagas_horafim
+               END
+              ) OVERLAPS 
+              (vaga_inicio_ts, vaga_fim_ts)
+          )
+      ),
+      (
+          SELECT 'Plantão já aprovado: ' || v.vagas_data || ' das ' || v.vagas_horainicio || ' às ' || v.vagas_horafim ||
+                 CASE WHEN v.vagas_horafim <= v.vagas_horainicio THEN ' (madrugada)' ELSE '' END
+          FROM candidaturas c
+          JOIN vagas v ON c.vagas_id = v.vagas_id
+          WHERE (
+              -- Para médicos normais
+              (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+              OR
+              -- Para médicos pré-cadastrados
+              (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+          )
+          AND c.candidatura_status = 'APROVADO'
+          AND (
+              (v.vagas_data + v.vagas_horainicio, 
+               CASE 
+                   WHEN v.vagas_horafim <= v.vagas_horainicio 
+                   THEN (v.vagas_data + INTERVAL '1 day') + v.vagas_horafim
+                   ELSE v.vagas_data + v.vagas_horafim
+               END
+              ) OVERLAPS 
+              (vaga_inicio_ts, vaga_fim_ts)
+          )
+          LIMIT 1
+      )
+  INTO conflito_encontrado, vaga_conflitante_info;
+         
+  -- Bloquear se houver conflito de horário
+  IF conflito_encontrado THEN
+      RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO: %', vaga_conflitante_info;
+  END IF;
+
+END;
+$$;
+
+
+ALTER FUNCTION "public"."verificar_conflito_vaga_designada"("p_medico_id" "uuid", "p_data" "date", "p_hora_inicio" time without time zone, "p_hora_fim" time without time zone) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."verificar_consistencia_status_vagas"() RETURNS TABLE("problema" "text", "quantidade" integer, "detalhes" "text")
@@ -3029,33 +4113,25 @@ $$;
 
 ALTER FUNCTION "public"."verificar_consistencia_status_vagas"() OWNER TO "postgres";
 
-
-COMMENT ON FUNCTION "public"."verificar_consistencia_status_vagas"() IS 'Verifica inconsistências no status de vagas e candidaturas para monitoramento preventivo';
-
-
 SET default_tablespace = '';
 
 SET default_table_access_method = "heap";
 
 
-CREATE TABLE IF NOT EXISTS "public"."bannerMKT" (
+CREATE TABLE IF NOT EXISTS "public"."banner_mkt" (
     "id" bigint NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "page index" smallint,
+    "page_index" smallint,
     "imgpath" "text" DEFAULT 'http://'::"text",
     "description" "text" DEFAULT 'adicione uma descrição'::"text",
-    "URL" "text"
+    "url" "text"
 );
 
 
-ALTER TABLE "public"."bannerMKT" OWNER TO "postgres";
+ALTER TABLE "public"."banner_mkt" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."bannerMKT" IS 'Banner do Beiçola';
-
-
-
-ALTER TABLE "public"."bannerMKT" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE "public"."banner_mkt" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."bannerMKT_id_seq"
     START WITH 1
     INCREMENT BY 1
@@ -3066,27 +4142,28 @@ ALTER TABLE "public"."bannerMKT" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS I
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."beneficio_tipo" (
-    "beneficio_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "beneficio_nome" character varying NOT NULL
+CREATE TABLE IF NOT EXISTS "public"."beneficios" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "nome" character varying NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "public"."beneficio_tipo" OWNER TO "postgres";
+ALTER TABLE "public"."beneficios" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."candidaturas" (
-    "candidaturas_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "candidatos_createdate" timestamp without time zone DEFAULT "now"(),
-    "candidatos_dataconfirmacao" "date" DEFAULT "now"(),
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "created_at" timestamp without time zone DEFAULT "now"(),
+    "data_confirmacao" "date" DEFAULT "now"(),
     "medico_id" "uuid" NOT NULL,
     "vagas_id" "uuid" NOT NULL,
-    "candidatura_status" "text" NOT NULL,
-    "candidaturas_updateat" timestamp without time zone DEFAULT "now"(),
-    "candidaturas_updateby" "text",
+    "status" "text" NOT NULL,
+    "updated_at" timestamp without time zone DEFAULT "now"(),
+    "updated_by" "text",
     "vagas_valor" integer DEFAULT 100 NOT NULL,
     "medico_precadastro_id" "uuid",
-    CONSTRAINT "candidatura_status_check" CHECK (("candidatura_status" = ANY (ARRAY['PENDENTE'::"text", 'APROVADO'::"text", 'REPROVADO'::"text"]))),
+    CONSTRAINT "candidatura_status_check" CHECK (("status" = ANY (ARRAY['PENDENTE'::"text", 'APROVADO'::"text", 'REPROVADO'::"text"]))),
     CONSTRAINT "candidaturas_vagas_valor_check" CHECK ((("vagas_valor")::numeric > (0)::numeric)),
     CONSTRAINT "chk_one_medico_type_candidaturas" CHECK (((("medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") AND ("medico_precadastro_id" IS NOT NULL)) OR (("medico_id" <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") AND ("medico_precadastro_id" IS NULL))))
 );
@@ -3147,8 +4224,8 @@ ALTER TABLE "public"."carteira_digital" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."checkin_checkout" (
-    "index" smallint NOT NULL,
-    "vagas_id" "uuid",
+    "id" smallint NOT NULL,
+    "vaga_id" "uuid",
     "medico_id" "uuid",
     "checkin" timestamp without time zone NOT NULL,
     "checkout" timestamp without time zone,
@@ -3167,7 +4244,7 @@ CREATE TABLE IF NOT EXISTS "public"."checkin_checkout" (
 ALTER TABLE "public"."checkin_checkout" OWNER TO "postgres";
 
 
-ALTER TABLE "public"."checkin_checkout" ALTER COLUMN "index" ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE "public"."checkin_checkout" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."checkin_checkout_index_seq"
     START WITH 1
     INCREMENT BY 1
@@ -3195,10 +4272,6 @@ CREATE TABLE IF NOT EXISTS "public"."checkin_checkout_nofitications" (
 ALTER TABLE "public"."checkin_checkout_nofitications" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."checkin_checkout_nofitications" IS 'This is a duplicate of notifications';
-
-
-
 CREATE TABLE IF NOT EXISTS "public"."clean_hospital" (
     "terms" "text",
     "id" smallint NOT NULL,
@@ -3220,17 +4293,17 @@ ALTER TABLE "public"."clean_hospital" ALTER COLUMN "id" ADD GENERATED BY DEFAULT
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."codigosdearea" (
-    "Index" smallint NOT NULL,
-    "País" "text" NOT NULL,
-    "Código" "text",
-    "Formato" "text",
-    "Caracteres Máx" smallint,
-    "Lista" "text"
+CREATE TABLE IF NOT EXISTS "public"."codigos_area" (
+    "index" smallint NOT NULL,
+    "pais" "text" NOT NULL,
+    "codigo" "text",
+    "formato" "text",
+    "caracteres_max" smallint,
+    "lista" "text"
 );
 
 
-ALTER TABLE "public"."codigosdearea" OWNER TO "postgres";
+ALTER TABLE "public"."codigos_area" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."email_verification_tokens" (
@@ -3261,7 +4334,7 @@ ALTER TABLE "public"."email_verification_tokens" ALTER COLUMN "id" ADD GENERATED
 
 
 CREATE TABLE IF NOT EXISTS "public"."equipes" (
-    "equipes_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "nome" "text" NOT NULL,
     "grupo_id" "uuid" NOT NULL,
     "cor" character varying(7) NOT NULL,
@@ -3289,42 +4362,42 @@ CREATE TABLE IF NOT EXISTS "public"."equipes_medicos" (
 ALTER TABLE "public"."equipes_medicos" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."escalista" (
-    "escalista_auth_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "escalista_nome" character varying NOT NULL,
-    "escalista_telefone" character varying NOT NULL,
-    "escalista_email" character varying,
+CREATE TABLE IF NOT EXISTS "public"."escalistas" (
+    "auth_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "nome" character varying NOT NULL,
+    "telefone" character varying NOT NULL,
+    "email" character varying,
     "grupo_id" "uuid",
-    "escalista_createdate" timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "escalista_updateat" timestamp without time zone DEFAULT ("now"() AT TIME ZONE 'utc'::"text") NOT NULL,
-    "escalista_updateby" "uuid" DEFAULT "auth"."uid"(),
-    "escalista_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "update_at" timestamp with time zone DEFAULT ("now"() AT TIME ZONE 'utc'::"text") NOT NULL,
+    "update_by" "uuid" DEFAULT "auth"."uid"(),
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL
 );
 
 
-ALTER TABLE "public"."escalista" OWNER TO "postgres";
+ALTER TABLE "public"."escalistas" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."especialidades" (
-    "especialidade_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "especialidade_created_at" timestamp with time zone DEFAULT "now"(),
-    "especialidade_nome" character varying,
-    "especialidade_index" smallint
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "nome" character varying,
+    "index" smallint
 );
 
 
 ALTER TABLE "public"."especialidades" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."estadosBrasil" (
+CREATE TABLE IF NOT EXISTS "public"."estados_brasil" (
     "id" bigint NOT NULL,
-    "Nome" "text",
-    "Sigla" "text",
-    "Lista" "text"
+    "nome" "text",
+    "sigla" "text",
+    "lista" "text"
 );
 
 
-ALTER TABLE "public"."estadosBrasil" OWNER TO "postgres";
+ALTER TABLE "public"."estados_brasil" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."formas_recebimento" (
@@ -3357,48 +4430,40 @@ CREATE TABLE IF NOT EXISTS "public"."grades" (
 ALTER TABLE "public"."grades" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."grades"."configuracao" IS 'Estrutura JSON: {
-  "slots": [{"id": "...", "startHour": 7, "endHour": 19, "vagasCount": 2, "lineIndex": 0}],
-  "lineNames": {"0": "Nome da Semana 1"},
-  "selectedDays": {"0": [true, true, true, true, true, false, false]},
-  "slotsByDay": {"0": {"0": [{"id": "...", "startHour": 7, "endHour": 19, "vagasCount": 2}]}},
-  "subLinesByDay": {"0": {"0": [...]}},
-  "weekStartHours": {"0": 7}
-}';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."grupo" (
-    "grupo_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "grupo_nome" character varying NOT NULL,
-    "grupo_responsavel" character varying,
-    "grupo_telefone" character varying,
-    "grupo_email" character varying,
-    "grupo_createdate" timestamp without time zone DEFAULT "now"() NOT NULL
+CREATE TABLE IF NOT EXISTS "public"."grupos" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "nome" character varying NOT NULL,
+    "responsavel" character varying,
+    "telefone" character varying,
+    "email" character varying,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "public"."grupo" OWNER TO "postgres";
+ALTER TABLE "public"."grupos" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."hospital" (
-    "hospital_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "hospital_nome" "text" NOT NULL,
-    "hospital_logradouro" "text" NOT NULL,
-    "hospital_numero" "text" NOT NULL,
-    "hospital_cidade" "text" NOT NULL,
-    "hospital_bairro" "text" NOT NULL,
-    "hospital_estado" "text" NOT NULL,
-    "hospital_pais" "text" NOT NULL,
-    "hospital_cep" "text" NOT NULL,
+CREATE TABLE IF NOT EXISTS "public"."hospitais" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "nome" "text" NOT NULL,
+    "logradouro" "text" NOT NULL,
+    "numero" "text" NOT NULL,
+    "cidade" "text" NOT NULL,
+    "bairro" "text" NOT NULL,
+    "estado" "text" NOT NULL,
+    "pais" "text" NOT NULL,
+    "cep" "text" NOT NULL,
     "latitude" numeric(10,6),
     "longitude" numeric(10,6),
     "endereco_formatado" "text",
-    "hospital_avatar" "text" DEFAULT ''::"text"
+    "avatar" "text" DEFAULT ''::"text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "public"."hospital" OWNER TO "postgres";
+ALTER TABLE "public"."hospitais" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."hospital_geofencing" (
@@ -3416,58 +4481,46 @@ CREATE TABLE IF NOT EXISTS "public"."hospital_geofencing" (
 ALTER TABLE "public"."hospital_geofencing" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."local" (
-    "local_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "local_nome" character varying NOT NULL
-);
-
-
-ALTER TABLE "public"."local" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."local_medico" (
-    "local_id" "uuid" NOT NULL,
-    "medico_id" "uuid" NOT NULL
-);
-
-
-ALTER TABLE "public"."local_medico" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."medicos" (
     "id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
-    "medico_rqe" "text" DEFAULT 'Não informado'::"text",
-    "medico_genero" "text",
-    "medico_cpf" "text",
-    "medico_rg" "text",
-    "medico_crm" "text",
-    "medico_nomedafaculdade" "text",
-    "medico_tipofaculdade" "text",
-    "medico_primeironome" "text",
-    "medico_sobrenome" "text",
-    "medico_email" "text",
-    "medico_telefone" "text",
-    "medico_datanascimento" "date",
-    "medico_logradouro" "text",
-    "medico_numero" "text",
-    "medico_bairro" "text",
-    "medico_cidade" "text",
-    "medico_estado" "text",
-    "medico_pais" "text",
-    "medico_cep" "text",
+    "rqe" "text" DEFAULT 'Não informado'::"text",
+    "genero" "text",
+    "cpf" "text",
+    "rg" "text",
+    "crm" "text",
+    "nome_faculdade" "text",
+    "tipo_faculdade" "text",
+    "primeiro_nome" "text",
+    "sobrenome" "text",
+    "email" "text",
+    "telefone" "text",
+    "data_nascimento" "date",
+    "logradouro" "text",
+    "numero" "text",
+    "bairro" "text",
+    "cidade" "text",
+    "estado" "text",
+    "pais" "text",
+    "cep" "text",
     "created_at" timestamp without time zone DEFAULT "now"(),
-    "medico_updateat" timestamp with time zone,
-    "medico_updateby" "text" DEFAULT ''::"text",
-    "medico_deleteat" timestamp without time zone,
-    "medico_status" "text",
-    "medico_totalplantoes" integer DEFAULT 0,
-    "medico_especialidade" "uuid" DEFAULT '6404fc30-f292-4005-ae81-da1111a8822d'::"uuid",
-    "medico_anoterminoespecializacao" integer,
-    "medico_anoformatura" integer,
+    "update_at" timestamp with time zone,
+    "update_by" "text" DEFAULT ''::"text",
+    "delete_at" timestamp without time zone,
+    "status" "text",
+    "total_plantoes" integer DEFAULT 0,
+    "especialidade_id" "uuid" DEFAULT '6404fc30-f292-4005-ae81-da1111a8822d'::"uuid",
+    "ano_termino_especializacao" integer,
+    "ano_formatura" integer,
     "tracking_privacy" boolean,
     "especialidade_nome" "text",
-    CONSTRAINT "medicos_medico_cep_check" CHECK (("medico_cep" ~ '^\d{5}-\d{3}$'::"text")),
-    CONSTRAINT "medicos_medico_status_check" CHECK (("medico_status" = ANY (ARRAY[('ativo'::character varying)::"text", ('inativo'::character varying)::"text", ('suspenso'::character varying)::"text"])))
+    "razao_social" "text",
+    "cnpj" "text",
+    "banco_agencia" "text",
+    "banco_digito" "text",
+    "banco_conta" "text",
+    "banco_pix" "text",
+    CONSTRAINT "medicos_medico_cep_check" CHECK (("cep" ~ '^\d{5}-\d{3}$$'::"text")),
+    CONSTRAINT "medicos_medico_status_check" CHECK (("status" = ANY (ARRAY['ativo'::"text", 'inativo'::"text", 'suspenso'::"text"])))
 );
 
 
@@ -3486,34 +4539,24 @@ CREATE TABLE IF NOT EXISTS "public"."medicos_favoritos" (
 ALTER TABLE "public"."medicos_favoritos" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."medicos_favoritos" IS 'Tabela para armazenar médicos favoritos de cada escalista';
-
-
-
-COMMENT ON COLUMN "public"."medicos_favoritos"."escalista_id" IS 'ID do escalista (FK para escalista)';
-
-
-
-COMMENT ON COLUMN "public"."medicos_favoritos"."medico_id" IS 'ID do médico favorito (FK para medicos)';
-
-
-
-COMMENT ON COLUMN "public"."medicos_favoritos"."created_at" IS 'Data e hora quando o médico foi favoritado';
-
-
-
 CREATE TABLE IF NOT EXISTS "public"."medicos_precadastro" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "medico_primeironome" character varying(255) NOT NULL,
-    "medico_sobrenome" character varying(255) NOT NULL,
-    "medico_crm" character varying(50) NOT NULL,
-    "medico_cpf" character varying(14),
-    "medico_email" character varying(255),
-    "medico_telefone" character varying(20),
-    "medico_especialidade" "uuid",
+    "primeiro_nome" character varying(255) NOT NULL,
+    "sobrenome" character varying(255) NOT NULL,
+    "crm" character varying(50) NOT NULL,
+    "cpf" character varying(14),
+    "email" character varying(255),
+    "telefone" character varying(20),
+    "especialidade_id" "uuid",
     "created_by" "uuid",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "medico_estado" "text"
+    "estado" "text",
+    "razao_social" "text",
+    "cnpj" "text",
+    "banco_agencia" "text",
+    "banco_digito" "text",
+    "banco_conta" "text",
+    "banco_pix" "text"
 );
 
 
@@ -3538,12 +4581,12 @@ ALTER TABLE "public"."notifications" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."pagamentos" (
-    "pagamento_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "medico_id" "uuid",
     "candidaturas_id" "uuid",
     "valor" integer NOT NULL,
-    "vagas_id" "uuid" NOT NULL,
+    "vagas_id" "uuid",
     "medicos_id" "uuid"
 );
 
@@ -3551,64 +4594,46 @@ CREATE TABLE IF NOT EXISTS "public"."pagamentos" (
 ALTER TABLE "public"."pagamentos" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."periodo" (
-    "periodo_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+CREATE TABLE IF NOT EXISTS "public"."periodos" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "periodo" "text"
+    "nome" "text",
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "public"."periodo" OWNER TO "postgres";
+ALTER TABLE "public"."periodos" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."requisito_tipo" (
-    "requisito_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "requisito_nome" "text" NOT NULL
+CREATE TABLE IF NOT EXISTS "public"."requisitos" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "nome" "text" NOT NULL
 );
 
 
-ALTER TABLE "public"."requisito_tipo" OWNER TO "postgres";
+ALTER TABLE "public"."requisitos" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."setores" (
-    "setor_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "setor_nome" character varying NOT NULL
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "nome" character varying NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
 ALTER TABLE "public"."setores" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."sistema_logs" (
-    "log_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "log_tipo" "text" NOT NULL,
-    "log_descricao" "text" NOT NULL,
-    "log_data" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "log_detalhes" "jsonb"
-);
-
-
-ALTER TABLE "public"."sistema_logs" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."tipos_documentos" (
-    "tipo" "text" NOT NULL,
-    "label" "text" NOT NULL,
-    "obrigatorio" boolean DEFAULT true
-);
-
-
-ALTER TABLE "public"."tipos_documentos" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."tipovaga" (
+CREATE TABLE IF NOT EXISTS "public"."tipos_vaga" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "tipo" "text"
+    "nome" "text",
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "public"."tipovaga" OWNER TO "postgres";
+ALTER TABLE "public"."tipos_vaga" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."user_profile" (
@@ -3618,9 +4643,9 @@ CREATE TABLE IF NOT EXISTS "public"."user_profile" (
     "profilepicture" "text",
     "displayname" "text",
     "gender" "text",
-    "areacodeIndex" smallint DEFAULT '0'::smallint NOT NULL,
-    "UFindex" smallint DEFAULT '0'::smallint NOT NULL,
-    "specialtyIndex" smallint DEFAULT '0'::smallint NOT NULL,
+    "areacode_index" smallint DEFAULT '0'::smallint NOT NULL,
+    "uf_index" smallint DEFAULT '0'::smallint NOT NULL,
+    "specialty_index" smallint DEFAULT '0'::smallint NOT NULL,
     "fcm_token" "text",
     "platform" "text",
     "apn_token" "text"
@@ -3631,43 +4656,39 @@ ALTER TABLE "public"."user_profile" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."vagas" (
-    "vagas_id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "vagas_createdate" timestamp without time zone DEFAULT "now"() NOT NULL,
-    "vagas_hospital" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "vagas_data" "date",
-    "vagas_periodo" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "vagas_horainicio" time without time zone NOT NULL,
-    "vagas_horafim" time without time zone NOT NULL,
-    "vagas_valor" integer NOT NULL,
-    "vagas_datapagamento" "date" NOT NULL,
-    "vagas_tipo" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "vagas_observacoes" character varying,
-    "vagas_setor" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "vagas_escalista" "uuid" DEFAULT 'ada3a79a-6437-4e27-9e22-40c08c36c59b'::"uuid" NOT NULL,
-    "vagas_updateat" timestamp without time zone DEFAULT "now"(),
-    "vagas_updateby" "uuid" DEFAULT 'ada3a79a-6437-4e27-9e22-40c08c36c59b'::"uuid" NOT NULL,
-    "vagas_deleteat" timestamp without time zone DEFAULT "now"(),
-    "vagas_status" character varying,
-    "vagas_totalcandidaturas" integer DEFAULT 0,
-    "vaga_especialidade" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "hospital_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "data" "date",
+    "periodo_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "hora_inicio" time without time zone NOT NULL,
+    "hora_fim" time without time zone NOT NULL,
+    "valor" integer NOT NULL,
+    "data_pagamento" "date" NOT NULL,
+    "tipos_vaga_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "observacoes" character varying,
+    "setor_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "escalista_id" "uuid" DEFAULT 'ada3a79a-6437-4e27-9e22-40c08c36c59b'::"uuid" NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "updated_by" "uuid" DEFAULT 'ada3a79a-6437-4e27-9e22-40c08c36c59b'::"uuid" NOT NULL,
+    "deleted_at" timestamp with time zone DEFAULT "now"(),
+    "status" character varying,
+    "total_candidaturas" integer DEFAULT 0,
+    "especialidade_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "grupo_id" "uuid" DEFAULT '59f5120a-ac2a-4c5f-a7f3-b5083982b5c6'::"uuid",
-    "Index" smallint NOT NULL,
-    "vagas_formarecebimento" "uuid",
+    "index" smallint NOT NULL,
+    "forma_recebimento_id" "uuid",
     "recorrencia_id" "uuid",
     "grade_id" "uuid",
-    CONSTRAINT "vagas_vagas_status_check" CHECK ((("vagas_status")::"text" = ANY (ARRAY[('aberta'::character varying)::"text", ('fechada'::character varying)::"text", ('cancelada'::character varying)::"text", ('anunciada'::character varying)::"text"]))),
-    CONSTRAINT "vagas_vagas_valor_check" CHECK ((("vagas_valor")::numeric > (0)::numeric))
+    CONSTRAINT "vagas_vagas_status_check" CHECK ((("status")::"text" = ANY (ARRAY[('aberta'::character varying)::"text", ('fechada'::character varying)::"text", ('cancelada'::character varying)::"text", ('anunciada'::character varying)::"text"]))),
+    CONSTRAINT "vagas_vagas_valor_check" CHECK ((("valor")::numeric > (0)::numeric))
 );
 
 
 ALTER TABLE "public"."vagas" OWNER TO "postgres";
 
 
-COMMENT ON COLUMN "public"."vagas"."grade_id" IS 'ID da grade que gerou esta vaga';
-
-
-
-ALTER TABLE "public"."vagas" ALTER COLUMN "Index" ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE "public"."vagas" ALTER COLUMN "index" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."vagas_Index_seq"
     START WITH 1
     INCREMENT BY 1
@@ -3678,17 +4699,17 @@ ALTER TABLE "public"."vagas" ALTER COLUMN "Index" ADD GENERATED BY DEFAULT AS ID
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."vagas_beneficio" (
-    "vagas_id" "uuid" NOT NULL,
-    "beneficio_id" "uuid" NOT NULL,
-    "Index" smallint NOT NULL
+CREATE TABLE IF NOT EXISTS "public"."vagas_beneficios" (
+    "vaga_id" "uuid" NOT NULL,
+    "beneficio_tipo_id" "uuid" NOT NULL,
+    "id" smallint NOT NULL
 );
 
 
-ALTER TABLE "public"."vagas_beneficio" OWNER TO "postgres";
+ALTER TABLE "public"."vagas_beneficios" OWNER TO "postgres";
 
 
-ALTER TABLE "public"."vagas_beneficio" ALTER COLUMN "Index" ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE "public"."vagas_beneficios" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."vagas_beneficio_Index_seq"
     START WITH 1
     INCREMENT BY 1
@@ -3700,50 +4721,50 @@ ALTER TABLE "public"."vagas_beneficio" ALTER COLUMN "Index" ADD GENERATED BY DEF
 
 
 CREATE OR REPLACE VIEW "public"."vagas_completo" WITH ("security_invoker"='on') AS
- SELECT "v"."vagas_id",
-    "v"."vagas_createdate",
-    "v"."vagas_data",
-    "v"."vagas_horainicio",
-    "v"."vagas_horafim",
-    "v"."vagas_valor",
-    "v"."vagas_datapagamento",
+ SELECT "v"."id" AS "vagas_id",
+    "v"."created_at" AS "vagas_createdate",
+    "v"."data" AS "vagas_data",
+    "v"."hora_inicio" AS "vagas_horainicio",
+    "v"."hora_fim" AS "vagas_horafim",
+    "v"."valor" AS "vagas_valor",
+    "v"."data_pagamento" AS "vagas_datapagamento",
     "fr"."forma_recebimento" AS "vagas_formarecebimento",
-    "v"."vagas_observacoes",
-    "h"."hospital_nome",
-    "s"."setor_nome",
-    "p"."periodo" AS "periodo_nome",
-    "t"."tipo" AS "tipo_nome",
-    "esp"."especialidade_nome",
-    "g"."grupo_id",
-    "g"."grupo_nome",
-    "g"."grupo_responsavel",
-    "g"."grupo_telefone",
-    "g"."grupo_email",
-    "v"."vagas_status",
-    "e"."escalista_nome",
-    "e"."escalista_id",
-    "e"."escalista_telefone",
-    "e"."escalista_email",
+    "v"."observacoes" AS "vagas_observacoes",
+    "h"."nome" AS "hospital_nome",
+    "s"."nome" AS "setor_nome",
+    "p"."nome" AS "periodo_nome",
+    "t"."nome" AS "tipo_nome",
+    "esp"."nome" AS "especialidade_nome",
+    "g"."id" AS "grupo_id",
+    "g"."nome" AS "grupo_nome",
+    "g"."responsavel" AS "grupo_responsavel",
+    "g"."telefone" AS "grupo_telefone",
+    "g"."email" AS "grupo_email",
+    "v"."status" AS "vagas_status",
+    "e"."nome" AS "escalista_nome",
+    "e"."id" AS "escalista_id",
+    "e"."telefone" AS "escalista_telefone",
+    "e"."email" AS "escalista_email",
     "h"."latitude" AS "hospital_lat",
     "h"."longitude" AS "hospital_log",
     "h"."endereco_formatado" AS "hospital_end",
-    "h"."hospital_avatar"
+    "h"."avatar" AS "hospital_avatar"
    FROM (((((((("public"."vagas" "v"
-     LEFT JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-     LEFT JOIN "public"."setores" "s" ON (("v"."vagas_setor" = "s"."setor_id")))
-     LEFT JOIN "public"."periodo" "p" ON (("v"."vagas_periodo" = "p"."periodo_id")))
-     LEFT JOIN "public"."tipovaga" "t" ON (("v"."vagas_tipo" = "t"."id")))
-     LEFT JOIN "public"."escalista" "e" ON (("v"."vagas_escalista" = "e"."escalista_id")))
-     LEFT JOIN "public"."especialidades" "esp" ON (("v"."vaga_especialidade" = "esp"."especialidade_id")))
-     LEFT JOIN "public"."grupo" "g" ON (("v"."grupo_id" = "g"."grupo_id")))
-     LEFT JOIN "public"."formas_recebimento" "fr" ON (("v"."vagas_formarecebimento" = "fr"."id")));
+     LEFT JOIN "public"."hospitais" "h" ON (("v"."hospital_id" = "h"."id")))
+     LEFT JOIN "public"."setores" "s" ON (("v"."setor_id" = "s"."id")))
+     LEFT JOIN "public"."periodos" "p" ON (("v"."periodo_id" = "p"."id")))
+     LEFT JOIN "public"."tipos_vaga" "t" ON (("v"."tipos_vaga_id" = "t"."id")))
+     LEFT JOIN "public"."escalistas" "e" ON (("v"."escalista_id" = "e"."id")))
+     LEFT JOIN "public"."especialidades" "esp" ON (("v"."especialidade_id" = "esp"."id")))
+     LEFT JOIN "public"."grupos" "g" ON (("v"."grupo_id" = "g"."id")))
+     LEFT JOIN "public"."formas_recebimento" "fr" ON (("v"."forma_recebimento_id" = "fr"."id")));
 
 
 ALTER TABLE "public"."vagas_completo" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."vagas_recorrencia" (
-    "recorrencia_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+CREATE TABLE IF NOT EXISTS "public"."vagas_recorrencias" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "created_by" "uuid",
@@ -3754,16 +4775,16 @@ CREATE TABLE IF NOT EXISTS "public"."vagas_recorrencia" (
 );
 
 
-ALTER TABLE "public"."vagas_recorrencia" OWNER TO "postgres";
+ALTER TABLE "public"."vagas_recorrencias" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."vagas_requisito" (
+CREATE TABLE IF NOT EXISTS "public"."vagas_requisitos" (
     "vagas_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "requisito_id" "uuid" NOT NULL
+    "requisito_tipo_id" "uuid" NOT NULL
 );
 
 
-ALTER TABLE "public"."vagas_requisito" OWNER TO "postgres";
+ALTER TABLE "public"."vagas_requisitos" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."vagas_salvas" (
@@ -3788,274 +4809,64 @@ ALTER TABLE "public"."vagas_salvas" ALTER COLUMN "id" ADD GENERATED BY DEFAULT A
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."validacao_documentos" (
-    "carteira_id" "uuid" NOT NULL,
-    "carteira_alteracao" timestamp without time zone DEFAULT "now"(),
-    "validacaoby" character varying,
-    "carteira_diploma" character varying,
-    "carteira_crm" character varying,
-    "carteira_cpf" character varying,
-    "carteira_rg" character varying,
-    "carteira_especializacaodiploma" character varying,
-    "carteira_anuidadecrm" character varying,
-    "carteira_eticoprofissional" character varying,
-    "carteira_comprovanteresidencia" character varying,
-    "carteira_foto" character varying,
-    "carteira_comprovantevacina" character varying,
-    CONSTRAINT "carteira_anuidadecrm_check" CHECK ((("carteira_anuidadecrm")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_comprovanteresidencia_check" CHECK ((("carteira_comprovanteresidencia")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_comprovantevacina_check" CHECK ((("carteira_comprovantevacina")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_cpf_check" CHECK ((("carteira_cpf")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_crm_check" CHECK ((("carteira_crm")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_diploma_check" CHECK ((("carteira_diploma")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_especializacaodiploma_check" CHECK ((("carteira_especializacaodiploma")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_eticoprofissional_check" CHECK ((("carteira_eticoprofissional")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_foto_check" CHECK ((("carteira_foto")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "carteira_rg_check" CHECK ((("carteira_rg")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_anuidadecrm_check" CHECK ((("carteira_anuidadecrm")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_comprovanteresidencia_check" CHECK ((("carteira_comprovanteresidencia")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_comprovantevacina_check" CHECK ((("carteira_comprovantevacina")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_cpf_check" CHECK ((("carteira_cpf")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_crm_check" CHECK ((("carteira_crm")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_diploma_check" CHECK ((("carteira_diploma")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_especializacaodiploma_check" CHECK ((("carteira_especializacaodiploma")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_eticoprofissional_check" CHECK ((("carteira_eticoprofissional")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_foto_check" CHECK ((("carteira_foto")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[]))),
-    CONSTRAINT "validacao_documentos_carteira_rg_check" CHECK ((("carteira_rg")::"text" = ANY ((ARRAY['APROVADO'::character varying, 'REPROVADO'::character varying, 'AGUARDANDO'::character varying])::"text"[])))
-);
+CREATE OR REPLACE VIEW "public"."vw_folha_pagamento" AS
+ SELECT "v"."id" AS "vagas_id",
+    "v"."data" AS "vagas_data",
+    "p"."nome" AS "periodo_nome",
+    "v"."hora_inicio" AS "horario_inicio",
+    "v"."hora_fim" AS "horario_fim",
+    "v"."valor" AS "vagas_valor",
+    "v"."data_pagamento" AS "vagas_datapagamento",
+    "fr"."forma_recebimento",
+    "h"."id" AS "hospital_id",
+    "h"."nome" AS "hospital_nome",
+    "e"."id" AS "especialidade_id",
+    "e"."nome" AS "vagas_especialidade",
+    "s"."id" AS "setor_id",
+    "s"."nome" AS "setor_nome",
+    "c"."id" AS "candidaturas_id",
+    "c"."medico_id",
+    "c"."medico_precadastro_id",
+    "c"."status" AS "candidatura_status",
+    "c"."data_confirmacao" AS "candidatos_dataconfirmacao",
+    COALESCE("m"."primeiro_nome", ("mp"."primeiro_nome")::"text") AS "medico_primeironome",
+    COALESCE("m"."sobrenome", ("mp"."sobrenome")::"text") AS "medico_sobrenome",
+    COALESCE("m"."cpf", ("mp"."cpf")::"text") AS "medico_cpf",
+    COALESCE("m"."crm", ("mp"."crm")::"text") AS "medico_crm",
+    COALESCE("me"."nome", "mpe"."nome") AS "medico_especialidade",
+    COALESCE("m"."razao_social", "mp"."razao_social") AS "razao_social",
+    COALESCE("m"."cnpj", "mp"."cnpj") AS "cnpj",
+    COALESCE("m"."banco_agencia", "mp"."banco_agencia") AS "banco_agencia",
+    COALESCE("m"."banco_digito", "mp"."banco_digito") AS "banco_digito",
+    COALESCE("m"."banco_conta", "mp"."banco_conta") AS "banco_conta",
+    COALESCE("m"."banco_pix", "mp"."banco_pix") AS "banco_pix",
+    "cc"."checkin",
+    "cc"."checkout",
+    "cc"."checkin_latitude",
+    "cc"."checkin_longitude",
+    "cc"."checkout_latitude",
+    "cc"."checkout_longitude",
+    "cc"."checkin_justificativa",
+    "cc"."checkout_justificativa"
+   FROM ((((((((((("public"."vagas" "v"
+     JOIN "public"."candidaturas" "c" ON (("c"."vagas_id" = "v"."id")))
+     LEFT JOIN "public"."medicos" "m" ON ((("m"."id" = "c"."medico_id") AND ("c"."medico_precadastro_id" IS NULL))))
+     LEFT JOIN "public"."medicos_precadastro" "mp" ON (("mp"."id" = "c"."medico_precadastro_id")))
+     LEFT JOIN "public"."checkin_checkout" "cc" ON ((("cc"."vaga_id" = "v"."id") AND (("cc"."medico_id" = "m"."id") OR ("cc"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid")))))
+     LEFT JOIN "public"."hospitais" "h" ON (("h"."id" = "v"."hospital_id")))
+     LEFT JOIN "public"."especialidades" "e" ON (("e"."id" = "v"."especialidade_id")))
+     LEFT JOIN "public"."especialidades" "me" ON (("me"."id" = "m"."especialidade_id")))
+     LEFT JOIN "public"."especialidades" "mpe" ON (("mpe"."id" = "mp"."especialidade_id")))
+     LEFT JOIN "public"."setores" "s" ON (("s"."id" = "v"."setor_id")))
+     LEFT JOIN "public"."periodos" "p" ON (("p"."id" = "v"."periodo_id")))
+     LEFT JOIN "public"."formas_recebimento" "fr" ON (("fr"."id" = "v"."forma_recebimento_id")))
+  WHERE ((("v"."status")::"text" = 'fechada'::"text") AND ("c"."status" = 'APROVADO'::"text"));
 
 
-ALTER TABLE "public"."validacao_documentos" OWNER TO "postgres";
+ALTER TABLE "public"."vw_folha_pagamento" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."vw_candidaturas_pendentes" WITH ("security_invoker"='on') AS
- SELECT (("m"."medico_primeironome" || ' '::"text") || "m"."medico_sobrenome") AS "nome_medico",
-    "m"."medico_crm" AS "crm_medico",
-    "h"."hospital_nome" AS "nome_hospital",
-    "v"."vagas_data" AS "data_plantao",
-    "v"."vagas_horainicio" AS "hora_inicio",
-    "v"."vagas_horafim" AS "hora_fim",
-    "e"."escalista_nome" AS "nome_escalista",
-    "e"."escalista_telefone" AS "telefone_escalista",
-    "c"."candidatura_status" AS "status_candidatura",
-    "c"."candidaturas_id",
-    "c"."medico_id" AS "medicos_id",
-    "c"."vagas_id",
-    "espec_medico"."especialidade_nome" AS "especialidade_medico",
-    "espec_vaga"."especialidade_nome" AS "especialidade_vaga",
-    "m"."medico_telefone" AS "telefone_medico"
-   FROM (((((("public"."candidaturas" "c"
-     JOIN "public"."medicos" "m" ON (("c"."medico_id" = "m"."id")))
-     LEFT JOIN "public"."especialidades" "espec_medico" ON (("m"."medico_especialidade" = "espec_medico"."especialidade_id")))
-     JOIN "public"."vagas" "v" ON (("c"."vagas_id" = "v"."vagas_id")))
-     LEFT JOIN "public"."especialidades" "espec_vaga" ON (("v"."vaga_especialidade" = "espec_vaga"."especialidade_id")))
-     JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-     JOIN "public"."escalista" "e" ON (("v"."vagas_escalista" = "e"."escalista_id")))
-  WHERE ("c"."candidatura_status" = 'PENDENTE'::"text")
-  ORDER BY "v"."vagas_data", "v"."vagas_horainicio";
-
-
-ALTER TABLE "public"."vw_candidaturas_pendentes" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_candidaturas_por_dia" WITH ("security_invoker"='on') AS
- SELECT "date"("candidaturas"."candidatos_createdate") AS "data",
-    "count"(*) AS "total"
-   FROM "public"."candidaturas"
-  GROUP BY ("date"("candidaturas"."candidatos_createdate"))
-  ORDER BY ("date"("candidaturas"."candidatos_createdate"));
-
-
-ALTER TABLE "public"."vw_candidaturas_por_dia" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_dashboard_metrics" WITH ("security_invoker"='on') AS
- WITH "metricas_vagas" AS (
-         SELECT "count"(*) FILTER (WHERE (("vagas"."vagas_status")::"text" = 'aberta'::"text")) AS "total_vagas_ativas",
-            "count"(*) FILTER (WHERE ((("vagas"."vagas_status")::"text" = 'aberta'::"text") AND ("vagas"."vagas_createdate" >= ("now"() - '1 mon'::interval)) AND ("vagas"."vagas_createdate" < "now"()))) AS "vagas_ultimo_mes"
-           FROM "public"."vagas"
-        ), "metricas_candidaturas" AS (
-         SELECT "count"(*) FILTER (WHERE ("candidaturas"."candidatura_status" = ANY (ARRAY['PENDENTE'::"text", 'CANDIDATOS DISPONIVEIS'::"text"]))) AS "total_candidaturas_pendentes",
-            "count"(*) FILTER (WHERE (("candidaturas"."candidatura_status" = 'PENDENTE'::"text") AND ("candidaturas"."candidatos_createdate" >= ("now"() - '1 day'::interval)) AND ("candidaturas"."candidatos_createdate" < "now"()))) AS "candidaturas_ultimo_dia"
-           FROM "public"."candidaturas"
-        ), "metricas_documentos" AS (
-         SELECT "sum"((((((((((
-                CASE
-                    WHEN (("carteira_digital"."carteira_diploma_status" IS NULL) OR ("carteira_digital"."carteira_diploma_status" = false)) THEN 1
-                    ELSE 0
-                END +
-                CASE
-                    WHEN (("carteira_digital"."carteira_crm_status" IS NULL) OR ("carteira_digital"."carteira_crm_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_cpf_status" IS NULL) OR ("carteira_digital"."carteira_cpf_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_rg_status" IS NULL) OR ("carteira_digital"."carteira_rg_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_especializacaodiploma_status" IS NULL) OR ("carteira_digital"."carteira_especializacaodiploma_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_anuidadecrm_status" IS NULL) OR ("carteira_digital"."carteira_anuidadecrm_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_eticoprofissional_status" IS NULL) OR ("carteira_digital"."carteira_eticoprofissional_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_comprovanteresidencia_status" IS NULL) OR ("carteira_digital"."carteira_comprovanteresidencia_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_foto_status" IS NULL) OR ("carteira_digital"."carteira_foto_status" = false)) THEN 1
-                    ELSE 0
-                END) +
-                CASE
-                    WHEN (("carteira_digital"."carteira_comprovantevacina_status" IS NULL) OR ("carteira_digital"."carteira_comprovantevacina_status" = false)) THEN 1
-                    ELSE 0
-                END)) AS "total_documentos_pendentes",
-            "count"(*) FILTER (WHERE (GREATEST("carteira_digital"."carteira_diploma_updatedate", "carteira_digital"."carteira_crm_updatedate", "carteira_digital"."carteira_cpf_updatedate", "carteira_digital"."carteira_rg_updatedate", "carteira_digital"."carteira_especializacaodiploma_updatedate", "carteira_digital"."carteira_anuidadecrm_updatedate", "carteira_digital"."carteira_eticoprofissional_updatedate", "carteira_digital"."carteira_comprovanteresidencia_updatedate", "carteira_digital"."carteira_foto_updatedate", "carteira_digital"."carteira_comprovantevacina_updatedate") >= ("now"() - '1 day'::interval))) AS "documentos_ultimo_dia"
-           FROM "public"."carteira_digital"
-        )
- SELECT "mv"."total_vagas_ativas",
-    "mv"."vagas_ultimo_mes",
-    "mc"."total_candidaturas_pendentes",
-    "mc"."candidaturas_ultimo_dia",
-    COALESCE("md"."total_documentos_pendentes", (0)::bigint) AS "total_documentos_pendentes",
-    COALESCE("md"."documentos_ultimo_dia", (0)::bigint) AS "documentos_ultimo_dia",
-    "now"() AS "ultima_atualizacao"
-   FROM "metricas_vagas" "mv",
-    "metricas_candidaturas" "mc",
-    "metricas_documentos" "md";
-
-
-ALTER TABLE "public"."vw_dashboard_metrics" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_distribuicao_especialidades" WITH ("security_invoker"='on') AS
- SELECT "vagas_completo"."especialidade_nome" AS "especialidade",
-    "count"(*) AS "total"
-   FROM "public"."vagas_completo"
-  GROUP BY "vagas_completo"."especialidade_nome"
-  ORDER BY ("count"(*)) DESC;
-
-
-ALTER TABLE "public"."vw_distribuicao_especialidades" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_grupo_nome" WITH ("security_invoker"='on') AS
- SELECT "grupo"."grupo_id",
-    "grupo"."grupo_nome"
-   FROM "public"."grupo";
-
-
-ALTER TABLE "public"."vw_grupo_nome" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_ocupacao_plantoes" WITH ("security_invoker"='on') AS
- WITH "dias" AS (
-         SELECT ("generate_series"((CURRENT_DATE - '15 days'::interval), (CURRENT_DATE + '15 days'::interval), '1 day'::interval))::"date" AS "data"
-        ), "vagas_por_dia" AS (
-         SELECT "v"."vagas_data",
-            "count"("v"."vagas_id") AS "total_vagas"
-           FROM "public"."vagas" "v"
-          WHERE (("v"."vagas_data" >= (CURRENT_DATE - '15 days'::interval)) AND ("v"."vagas_data" <= (CURRENT_DATE + '15 days'::interval)))
-          GROUP BY "v"."vagas_data"
-        ), "vagas_com_candidatos" AS (
-         SELECT "v"."vagas_data",
-            "count"("c"."candidatura_status") AS "vagas_sem_candidatos"
-           FROM ("public"."vagas" "v"
-             LEFT JOIN "public"."candidaturas" "c" ON (("v"."vagas_id" = "c"."vagas_id")))
-          WHERE ((("v"."vagas_data" >= (CURRENT_DATE - '15 days'::interval)) AND ("v"."vagas_data" <= (CURRENT_DATE + '15 days'::interval))) AND ("c"."candidatura_status" = 'PENDENTE'::"text"))
-          GROUP BY "v"."vagas_data"
-        )
- SELECT "d"."data",
-    COALESCE("vpd"."total_vagas", (0)::bigint) AS "total_vagas",
-    COALESCE("vcc"."vagas_sem_candidatos", (0)::bigint) AS "vagas_sem_candidatos"
-   FROM (("dias" "d"
-     LEFT JOIN "vagas_por_dia" "vpd" ON (("d"."data" = "vpd"."vagas_data")))
-     LEFT JOIN "vagas_com_candidatos" "vcc" ON (("d"."data" = "vcc"."vagas_data")))
-  ORDER BY "d"."data";
-
-
-ALTER TABLE "public"."vw_ocupacao_plantoes" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_relatorio_folhapagamento" WITH ("security_invoker"='on') AS
- SELECT "v"."vagas_id",
-    "v"."vagas_data",
-    "v"."vagas_datapagamento",
-    "v"."vagas_valor",
-    "h"."hospital_id",
-    "h"."hospital_nome",
-    "e"."especialidade_id",
-    "e"."especialidade_nome",
-    "s"."setor_id",
-    "s"."setor_nome",
-    "m"."id" AS "medico_id",
-    "m"."medico_primeironome",
-    "m"."medico_sobrenome",
-    "m"."medico_crm",
-    "c"."candidatura_status"
-   FROM ((((("public"."vagas" "v"
-     JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-     JOIN "public"."especialidades" "e" ON (("v"."vaga_especialidade" = "e"."especialidade_id")))
-     JOIN "public"."setores" "s" ON (("v"."vagas_setor" = "s"."setor_id")))
-     JOIN "public"."candidaturas" "c" ON (("c"."vagas_id" = "v"."vagas_id")))
-     JOIN "public"."medicos" "m" ON (("c"."medico_id" = "m"."id")))
-  WHERE ("c"."candidatura_status" = 'APROVADO'::"text");
-
-
-ALTER TABLE "public"."vw_relatorio_folhapagamento" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_todas_candidaturas" WITH ("security_invoker"='on') AS
- SELECT (("m"."medico_primeironome" || ' '::"text") || "m"."medico_sobrenome") AS "nome_medico",
-    "m"."medico_crm" AS "crm_medico",
-    "h"."hospital_nome" AS "nome_hospital",
-    "v"."vagas_data" AS "data_plantao",
-    "v"."vagas_horainicio" AS "hora_inicio",
-    "v"."vagas_horafim" AS "hora_fim",
-    "e"."escalista_nome" AS "nome_escalista",
-    "e"."escalista_telefone" AS "telefone_escalista",
-    "c"."candidatura_status" AS "status_candidatura",
-    "c"."candidaturas_id",
-    "c"."medico_id" AS "medicos_id",
-    "c"."vagas_id",
-    "espec_medico"."especialidade_nome" AS "especialidade_medico",
-    "espec_vaga"."especialidade_nome" AS "especialidade_vaga",
-    "m"."medico_telefone" AS "telefone_medico"
-   FROM (((((("public"."candidaturas" "c"
-     JOIN "public"."medicos" "m" ON (("c"."medico_id" = "m"."id")))
-     LEFT JOIN "public"."especialidades" "espec_medico" ON (("m"."medico_especialidade" = "espec_medico"."especialidade_id")))
-     JOIN "public"."vagas" "v" ON (("c"."vagas_id" = "v"."vagas_id")))
-     LEFT JOIN "public"."especialidades" "espec_vaga" ON (("v"."vaga_especialidade" = "espec_vaga"."especialidade_id")))
-     JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-     JOIN "public"."escalista" "e" ON (("v"."vagas_escalista" = "e"."escalista_id")))
-  ORDER BY "v"."vagas_data", "v"."vagas_horainicio";
-
-
-ALTER TABLE "public"."vw_todas_candidaturas" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_usuarios_por_dia" WITH ("security_invoker"='on') AS
- SELECT "date"("users"."created_at") AS "data",
-    "count"(*) AS "total"
-   FROM "auth"."users"
-  GROUP BY ("date"("users"."created_at"))
-  ORDER BY ("date"("users"."created_at"));
-
-
-ALTER TABLE "public"."vw_usuarios_por_dia" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" WITH ("security_invoker"='on') AS
+CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" AS
  SELECT "row_number"() OVER (ORDER BY "combined_data"."vagas_id", "combined_data"."effective_medico_id", "combined_data"."candidaturas_id") AS "idx",
     "combined_data"."vagas_id",
     "combined_data"."vagas_data",
@@ -4092,13 +4903,14 @@ CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" WITH ("security_invoker"
     "combined_data"."candidaturas_id",
     "combined_data"."total_candidaturas",
     "combined_data"."candidatura_status",
-    "combined_data"."candidatos_createdate",
-    "combined_data"."candidaturas_updateby",
-    "combined_data"."candidaturas_updateat",
+    "combined_data"."candidatura_createdate",
+    "combined_data"."candidatura_updateby",
+    "combined_data"."candidatura_updatedat",
     "combined_data"."effective_medico_id" AS "medico_id",
-    "combined_data"."medico_primeironome",
+    "combined_data"."medico_primeiro_nome",
     "combined_data"."medico_sobrenome",
     "combined_data"."medico_crm",
+    "combined_data"."medico_cpf",
     "combined_data"."medico_estado",
     "combined_data"."medico_email",
     "combined_data"."medico_telefone",
@@ -4112,54 +4924,55 @@ CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" WITH ("security_invoker"
     "combined_data"."grade_id",
     "combined_data"."grade_nome",
     "combined_data"."grade_cor"
-   FROM ( SELECT DISTINCT "v"."vagas_id",
-            "v"."vagas_data",
-            "v"."vagas_createdate",
-            "v"."vagas_status",
-            "v"."vagas_valor",
-            "v"."vagas_horainicio",
-            "v"."vagas_horafim",
-            "v"."vagas_datapagamento",
-            "v"."vagas_periodo",
-            "p"."periodo" AS "vagas_periodo_nome",
-            "v"."vagas_tipo",
-            "t"."tipo" AS "vagas_tipo_nome",
-            "v"."vagas_formarecebimento",
+   FROM ( SELECT DISTINCT "v"."id" AS "vagas_id",
+            "v"."data" AS "vagas_data",
+            "v"."created_at" AS "vagas_createdate",
+            "v"."status" AS "vagas_status",
+            "v"."valor" AS "vagas_valor",
+            "v"."hora_inicio" AS "vagas_horainicio",
+            "v"."hora_fim" AS "vagas_horafim",
+            "v"."data_pagamento" AS "vagas_datapagamento",
+            "v"."periodo_id" AS "vagas_periodo",
+            "p"."nome" AS "vagas_periodo_nome",
+            "v"."tipos_vaga_id" AS "vagas_tipo",
+            "t"."nome" AS "vagas_tipo_nome",
+            "v"."forma_recebimento_id" AS "vagas_formarecebimento",
             "f"."forma_recebimento" AS "vagas_formarecebimento_nome",
-            "v"."vagas_observacoes",
-            "h"."hospital_id",
-            "h"."hospital_nome",
-            "h"."hospital_estado",
+            "v"."observacoes" AS "vagas_observacoes",
+            "v"."hospital_id",
+            "h"."nome" AS "hospital_nome",
+            "h"."estado" AS "hospital_estado",
             "h"."latitude" AS "hospital_lat",
             "h"."longitude" AS "hospital_log",
             "h"."endereco_formatado" AS "hospital_end",
-            "h"."hospital_avatar",
-            "e"."especialidade_id",
-            "e"."especialidade_nome",
-            "s"."setor_id",
-            "s"."setor_nome",
-            "esc"."escalista_id",
-            "esc"."escalista_nome",
-            "esc"."escalista_email",
-            "esc"."escalista_telefone",
-            "g"."grupo_id",
-            "g"."grupo_nome",
-            "c"."candidaturas_id",
-            "public"."count_candidaturas_total"("v"."vagas_id") AS "total_candidaturas",
-            "c"."candidatura_status",
-            "c"."candidatos_createdate",
-            "c"."candidaturas_updateby",
-            "c"."candidaturas_updateat",
+            "h"."avatar" AS "hospital_avatar",
+            "v"."especialidade_id",
+            "e"."nome" AS "especialidade_nome",
+            "v"."setor_id",
+            "s"."nome" AS "setor_nome",
+            "v"."escalista_id",
+            "esc"."nome" AS "escalista_nome",
+            "esc"."email" AS "escalista_email",
+            "esc"."telefone" AS "escalista_telefone",
+            "v"."grupo_id",
+            "g"."nome" AS "grupo_nome",
+            "c"."id" AS "candidaturas_id",
+            "public"."count_candidaturas_total"("v"."id") AS "total_candidaturas",
+            "c"."status" AS "candidatura_status",
+            "c"."created_at" AS "candidatura_createdate",
+            "c"."updated_by" AS "candidatura_updateby",
+            "c"."updated_at" AS "candidatura_updatedat",
                 CASE
                     WHEN (("c"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") AND ("c"."medico_precadastro_id" IS NOT NULL)) THEN "c"."medico_precadastro_id"
                     ELSE "vm"."medico_id"
                 END AS "effective_medico_id",
-            COALESCE("m"."medico_primeironome", ("mp"."medico_primeironome")::"text") AS "medico_primeironome",
-            COALESCE("m"."medico_sobrenome", ("mp"."medico_sobrenome")::"text") AS "medico_sobrenome",
-            COALESCE("m"."medico_crm", ("mp"."medico_crm")::"text") AS "medico_crm",
-            COALESCE("m"."medico_estado", "mp"."medico_estado") AS "medico_estado",
-            COALESCE("m"."medico_email", ("mp"."medico_email")::"text") AS "medico_email",
-            COALESCE("m"."medico_telefone", ("mp"."medico_telefone")::"text") AS "medico_telefone",
+            COALESCE("m"."primeiro_nome", ("mp"."primeiro_nome")::"text") AS "medico_primeiro_nome",
+            COALESCE("m"."sobrenome", ("mp"."sobrenome")::"text") AS "medico_sobrenome",
+            COALESCE("m"."crm", ("mp"."crm")::"text") AS "medico_crm",
+            COALESCE("m"."cpf", ("mp"."cpf")::"text") AS "medico_cpf",
+            COALESCE("m"."estado", "mp"."estado") AS "medico_estado",
+            COALESCE("m"."email", ("mp"."email")::"text") AS "medico_email",
+            COALESCE("m"."telefone", ("mp"."telefone")::"text") AS "medico_telefone",
             "c"."medico_precadastro_id",
             "v"."recorrencia_id",
                 CASE
@@ -4174,14 +4987,14 @@ CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" WITH ("security_invoker"
             "gr"."nome" AS "grade_nome",
             "gr"."cor" AS "grade_cor"
            FROM (((((((((((((((((("public"."vagas" "v"
-             JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-             JOIN "public"."especialidades" "e" ON (("v"."vaga_especialidade" = "e"."especialidade_id")))
-             JOIN "public"."setores" "s" ON (("v"."vagas_setor" = "s"."setor_id")))
-             LEFT JOIN "public"."escalista" "esc" ON (("v"."vagas_escalista" = "esc"."escalista_id")))
-             LEFT JOIN "public"."grupo" "g" ON (("v"."grupo_id" = "g"."grupo_id")))
-             LEFT JOIN "public"."periodo" "p" ON (("v"."vagas_periodo" = "p"."periodo_id")))
-             LEFT JOIN "public"."tipovaga" "t" ON (("v"."vagas_tipo" = "t"."id")))
-             LEFT JOIN "public"."formas_recebimento" "f" ON (("v"."vagas_formarecebimento" = "f"."id")))
+             JOIN "public"."hospitais" "h" ON (("v"."hospital_id" = "h"."id")))
+             JOIN "public"."especialidades" "e" ON (("v"."especialidade_id" = "e"."id")))
+             JOIN "public"."setores" "s" ON (("v"."setor_id" = "s"."id")))
+             LEFT JOIN "public"."escalistas" "esc" ON (("v"."escalista_id" = "esc"."id")))
+             LEFT JOIN "public"."grupos" "g" ON (("v"."grupo_id" = "g"."id")))
+             LEFT JOIN "public"."periodos" "p" ON (("v"."periodo_id" = "p"."id")))
+             LEFT JOIN "public"."tipos_vaga" "t" ON (("v"."tipos_vaga_id" = "t"."id")))
+             LEFT JOIN "public"."formas_recebimento" "f" ON (("v"."forma_recebimento_id" = "f"."id")))
              LEFT JOIN "public"."grades" "gr" ON (("v"."grade_id" = "gr"."id")))
              LEFT JOIN ( SELECT "candidaturas"."vagas_id",
                     "candidaturas"."medico_id"
@@ -4196,131 +5009,60 @@ CREATE OR REPLACE VIEW "public"."vw_vagas_candidaturas" WITH ("security_invoker"
                  SELECT "vagas_salvas"."vagas_id",
                     "vagas_salvas"."medico_id"
                    FROM "public"."vagas_salvas"
-                  WHERE ("vagas_salvas"."medico_id" IS NOT NULL)) "vm" ON (("vm"."vagas_id" = "v"."vagas_id")))
-             LEFT JOIN "public"."candidaturas" "c" ON ((("c"."vagas_id" = "v"."vagas_id") AND ((("c"."medico_id" = "vm"."medico_id") AND ("c"."medico_id" <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid")) OR (("c"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") AND ("c"."medico_precadastro_id" = "vm"."medico_id"))))))
+                  WHERE ("vagas_salvas"."medico_id" IS NOT NULL)) "vm" ON (("vm"."vagas_id" = "v"."id")))
+             LEFT JOIN "public"."candidaturas" "c" ON ((("c"."vagas_id" = "v"."id") AND ((("c"."medico_id" = "vm"."medico_id") AND ("c"."medico_id" <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid")) OR (("c"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") AND ("c"."medico_precadastro_id" = "vm"."medico_id"))))))
              LEFT JOIN "public"."medicos" "m" ON ((("c"."medico_id" = "m"."id") AND ("c"."medico_id" <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid"))))
              LEFT JOIN "public"."medicos_precadastro" "mp" ON (("c"."medico_precadastro_id" = "mp"."id")))
-             LEFT JOIN "public"."vagas_salvas" "vs" ON ((("vs"."vagas_id" = "v"."vagas_id") AND ("vs"."medico_id" = "vm"."medico_id"))))
-             LEFT JOIN "public"."vagas_salvas" "vsp" ON ((("vsp"."vagas_id" = "v"."vagas_id") AND ("vsp"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid"))))
-             LEFT JOIN "public"."checkin_checkout" "cc" ON ((("cc"."vagas_id" = "v"."vagas_id") AND ("cc"."medico_id" = "vm"."medico_id"))))
-             LEFT JOIN "public"."checkin_checkout" "ccp" ON ((("ccp"."vagas_id" = "v"."vagas_id") AND ("ccp"."medico_id" =
+             LEFT JOIN "public"."vagas_salvas" "vs" ON ((("vs"."vagas_id" = "v"."id") AND ("vs"."medico_id" = "vm"."medico_id"))))
+             LEFT JOIN "public"."vagas_salvas" "vsp" ON ((("vsp"."vagas_id" = "v"."id") AND ("vsp"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid"))))
+             LEFT JOIN "public"."checkin_checkout" "cc" ON ((("cc"."vaga_id" = "v"."id") AND ("cc"."medico_id" = "vm"."medico_id"))))
+             LEFT JOIN "public"."checkin_checkout" "ccp" ON ((("ccp"."vaga_id" = "v"."id") AND ("ccp"."medico_id" =
                 CASE
                     WHEN ("c"."medico_id" = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::"uuid") THEN "c"."medico_precadastro_id"
                     ELSE "vm"."medico_id"
                 END))))
-             LEFT JOIN "public"."pagamentos" "pg" ON (("pg"."candidaturas_id" = "c"."candidaturas_id")))) "combined_data";
+             LEFT JOIN "public"."pagamentos" "pg" ON (("pg"."candidaturas_id" = "c"."id")))) "combined_data";
 
 
 ALTER TABLE "public"."vw_vagas_candidaturas" OWNER TO "postgres";
 
 
-CREATE OR REPLACE VIEW "public"."vw_vagas_dias_contagem" WITH ("security_invoker"='on') AS
- SELECT "v"."vagas_id",
-    (CURRENT_DATE - ("v"."vagas_createdate")::"date") AS "dias_desde_criacao",
-    ("v"."vagas_data" - CURRENT_DATE) AS "dias_ate_vaga"
-   FROM "public"."vagas" "v";
-
-
-ALTER TABLE "public"."vw_vagas_dias_contagem" OWNER TO "postgres";
-
-
-CREATE MATERIALIZED VIEW "public"."vw_vagas_disponiveis" AS
- SELECT "v"."vagas_id",
-    "v"."vagas_data",
-    "v"."vagas_horainicio",
-    "v"."vagas_horafim",
-    "v"."vagas_valor",
-    "h"."hospital_nome",
-    "h"."hospital_cidade",
-    "h"."hospital_estado",
-    "s"."setor_nome",
-    "e"."especialidade_nome",
-    "p"."periodo",
-    "v"."vagas_totalcandidaturas",
-    "v"."vagas_status"
-   FROM (((("public"."vagas" "v"
-     JOIN "public"."hospital" "h" ON (("v"."vagas_hospital" = "h"."hospital_id")))
-     JOIN "public"."setores" "s" ON (("v"."vagas_setor" = "s"."setor_id")))
-     JOIN "public"."especialidades" "e" ON (("v"."vaga_especialidade" = "e"."especialidade_id")))
-     JOIN "public"."periodo" "p" ON (("v"."vagas_periodo" = "p"."periodo_id")))
-  WHERE (("v"."vagas_status")::"text" = 'DISPONIVEL'::"text")
-  WITH NO DATA;
-
-
-ALTER TABLE "public"."vw_vagas_disponiveis" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_vagas_especialidade" WITH ("security_invoker"='on') AS
- SELECT "v"."vagas_id",
-    "v"."vaga_especialidade",
-    "e"."especialidade_id",
-    "e"."especialidade_nome"
-   FROM ("public"."vagas" "v"
-     JOIN "public"."especialidades" "e" ON (("v"."vaga_especialidade" = "e"."especialidade_id")));
-
-
-ALTER TABLE "public"."vw_vagas_especialidade" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_vagas_grade_info" AS
- SELECT "v"."vagas_id",
-    "v"."grade_id",
-    "g"."nome" AS "grade_nome",
-    "g"."cor" AS "grade_cor"
-   FROM ("public"."vagas" "v"
-     LEFT JOIN "public"."grades" "g" ON (("v"."grade_id" = "g"."id")));
-
-
-ALTER TABLE "public"."vw_vagas_grade_info" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."vw_vagas_por_mes" WITH ("security_invoker"='on') AS
- SELECT "date_trunc"('month'::"text", ("vagas_completo"."vagas_data")::timestamp without time zone) AS "mes",
-    "count"("vagas_completo"."vagas_id") AS "total_vagas"
-   FROM "public"."vagas_completo"
-  GROUP BY ("date_trunc"('month'::"text", ("vagas_completo"."vagas_data")::timestamp without time zone))
-  ORDER BY ("date_trunc"('month'::"text", ("vagas_completo"."vagas_data")::timestamp without time zone));
-
-
-ALTER TABLE "public"."vw_vagas_por_mes" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."whatsappnumber" (
+CREATE TABLE IF NOT EXISTS "public"."whatsapp_number" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "number" "text" DEFAULT '5511969193194'::"text"
 );
 
 
-ALTER TABLE "public"."whatsappnumber" OWNER TO "postgres";
+ALTER TABLE "public"."whatsapp_number" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "public"."tipovaga"
+ALTER TABLE ONLY "public"."tipos_vaga"
     ADD CONSTRAINT "TipoVaga_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."bannerMKT"
+ALTER TABLE ONLY "public"."banner_mkt"
     ADD CONSTRAINT "bannerMKT_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."beneficio_tipo"
-    ADD CONSTRAINT "beneficio_tipo_beneficio_id_key" UNIQUE ("beneficio_id");
+ALTER TABLE ONLY "public"."beneficios"
+    ADD CONSTRAINT "beneficio_tipo_beneficio_id_key" UNIQUE ("id");
 
 
 
-ALTER TABLE ONLY "public"."beneficio_tipo"
-    ADD CONSTRAINT "beneficio_tipo_beneficio_nome_key" UNIQUE ("beneficio_nome");
+ALTER TABLE ONLY "public"."beneficios"
+    ADD CONSTRAINT "beneficio_tipo_beneficio_nome_key" UNIQUE ("nome");
 
 
 
-ALTER TABLE ONLY "public"."beneficio_tipo"
-    ADD CONSTRAINT "beneficio_tipo_pkey" PRIMARY KEY ("beneficio_id");
+ALTER TABLE ONLY "public"."beneficios"
+    ADD CONSTRAINT "beneficio_tipo_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."candidaturas"
-    ADD CONSTRAINT "candidaturas_pkey" PRIMARY KEY ("candidaturas_id");
+    ADD CONSTRAINT "candidaturas_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4330,7 +5072,7 @@ ALTER TABLE ONLY "public"."carteira_digital"
 
 
 ALTER TABLE ONLY "public"."checkin_checkout"
-    ADD CONSTRAINT "checkin_checkout_index_key" UNIQUE ("index");
+    ADD CONSTRAINT "checkin_checkout_index_key" UNIQUE ("id");
 
 
 
@@ -4350,12 +5092,12 @@ ALTER TABLE ONLY "public"."checkin_checkout_nofitications"
 
 
 ALTER TABLE ONLY "public"."checkin_checkout"
-    ADD CONSTRAINT "checkin_checkout_pkey" PRIMARY KEY ("index");
+    ADD CONSTRAINT "checkin_checkout_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."checkin_checkout"
-    ADD CONSTRAINT "checkin_checkout_vagas_id_key" UNIQUE ("vagas_id");
+    ADD CONSTRAINT "checkin_checkout_vagas_id_key" UNIQUE ("vaga_id");
 
 
 
@@ -4369,8 +5111,8 @@ ALTER TABLE ONLY "public"."clean_hospital"
 
 
 
-ALTER TABLE ONLY "public"."codigosdearea"
-    ADD CONSTRAINT "codigosdearea_pkey" PRIMARY KEY ("País");
+ALTER TABLE ONLY "public"."codigos_area"
+    ADD CONSTRAINT "codigosdearea_pkey" PRIMARY KEY ("pais");
 
 
 
@@ -4390,26 +5132,31 @@ ALTER TABLE ONLY "public"."equipes_medicos"
 
 
 ALTER TABLE ONLY "public"."equipes"
-    ADD CONSTRAINT "equipes_pkey" PRIMARY KEY ("equipes_id");
+    ADD CONSTRAINT "equipes_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."escalista"
-    ADD CONSTRAINT "escalista_id-de-escalista_key" UNIQUE ("escalista_id");
+ALTER TABLE ONLY "public"."escalistas"
+    ADD CONSTRAINT "escalista_id-de-escalista_key" UNIQUE ("id");
 
 
 
-ALTER TABLE ONLY "public"."escalista"
-    ADD CONSTRAINT "escalista_pkey" PRIMARY KEY ("escalista_id");
+ALTER TABLE ONLY "public"."escalistas"
+    ADD CONSTRAINT "escalista_id_key" UNIQUE ("id");
+
+
+
+ALTER TABLE ONLY "public"."escalistas"
+    ADD CONSTRAINT "escalista_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."especialidades"
-    ADD CONSTRAINT "especialidades_pkey" PRIMARY KEY ("especialidade_id");
+    ADD CONSTRAINT "especialidades_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."estadosBrasil"
+ALTER TABLE ONLY "public"."estados_brasil"
     ADD CONSTRAINT "estadosBrasil_pkey" PRIMARY KEY ("id");
 
 
@@ -4424,13 +5171,13 @@ ALTER TABLE ONLY "public"."grades"
 
 
 
-ALTER TABLE ONLY "public"."grupo"
-    ADD CONSTRAINT "grupo_grupo_nome_key" UNIQUE ("grupo_nome");
+ALTER TABLE ONLY "public"."grupos"
+    ADD CONSTRAINT "grupo_grupo_nome_key" UNIQUE ("nome");
 
 
 
-ALTER TABLE ONLY "public"."grupo"
-    ADD CONSTRAINT "grupo_pkey" PRIMARY KEY ("grupo_id");
+ALTER TABLE ONLY "public"."grupos"
+    ADD CONSTRAINT "grupo_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4439,18 +5186,8 @@ ALTER TABLE ONLY "public"."hospital_geofencing"
 
 
 
-ALTER TABLE ONLY "public"."hospital"
-    ADD CONSTRAINT "hospital_pkey" PRIMARY KEY ("hospital_id");
-
-
-
-ALTER TABLE ONLY "public"."local_medico"
-    ADD CONSTRAINT "local_medico_pkey" PRIMARY KEY ("local_id", "medico_id");
-
-
-
-ALTER TABLE ONLY "public"."local"
-    ADD CONSTRAINT "local_pkey" PRIMARY KEY ("local_id");
+ALTER TABLE ONLY "public"."hospitais"
+    ADD CONSTRAINT "hospital_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4460,22 +5197,22 @@ ALTER TABLE ONLY "public"."medicos_favoritos"
 
 
 ALTER TABLE ONLY "public"."medicos"
-    ADD CONSTRAINT "medicos_medico_cpf_key" UNIQUE ("medico_cpf");
+    ADD CONSTRAINT "medicos_medico_cpf_key" UNIQUE ("cpf");
 
 
 
 ALTER TABLE ONLY "public"."medicos"
-    ADD CONSTRAINT "medicos_medico_crm_key" UNIQUE ("medico_crm");
+    ADD CONSTRAINT "medicos_medico_crm_key" UNIQUE ("crm");
 
 
 
 ALTER TABLE ONLY "public"."medicos"
-    ADD CONSTRAINT "medicos_medico_email_key" UNIQUE ("medico_email");
+    ADD CONSTRAINT "medicos_medico_email_key" UNIQUE ("email");
 
 
 
 ALTER TABLE ONLY "public"."medicos"
-    ADD CONSTRAINT "medicos_medico_rg_key" UNIQUE ("medico_rg");
+    ADD CONSTRAINT "medicos_medico_rg_key" UNIQUE ("rg");
 
 
 
@@ -4515,7 +5252,7 @@ ALTER TABLE ONLY "public"."pagamentos"
 
 
 ALTER TABLE ONLY "public"."pagamentos"
-    ADD CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("pagamento_id");
+    ADD CONSTRAINT "pagamentos_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4524,28 +5261,18 @@ ALTER TABLE ONLY "public"."pagamentos"
 
 
 
-ALTER TABLE ONLY "public"."periodo"
-    ADD CONSTRAINT "periodo_pkey" PRIMARY KEY ("periodo_id");
+ALTER TABLE ONLY "public"."periodos"
+    ADD CONSTRAINT "periodo_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."requisito_tipo"
-    ADD CONSTRAINT "requisito_tipo_pkey" PRIMARY KEY ("requisito_id");
+ALTER TABLE ONLY "public"."requisitos"
+    ADD CONSTRAINT "requisito_tipo_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."setores"
-    ADD CONSTRAINT "setores_pkey" PRIMARY KEY ("setor_id");
-
-
-
-ALTER TABLE ONLY "public"."sistema_logs"
-    ADD CONSTRAINT "sistema_logs_pkey" PRIMARY KEY ("log_id");
-
-
-
-ALTER TABLE ONLY "public"."tipos_documentos"
-    ADD CONSTRAINT "tipos_documentos_pkey" PRIMARY KEY ("tipo");
+    ADD CONSTRAINT "setores_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4560,27 +5287,37 @@ ALTER TABLE ONLY "public"."user_profile"
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_Index_key" UNIQUE ("Index");
+    ADD CONSTRAINT "vagas_Index_key" UNIQUE ("index");
 
 
 
-ALTER TABLE ONLY "public"."vagas_beneficio"
-    ADD CONSTRAINT "vagas_beneficio_Index_key" UNIQUE ("Index");
+ALTER TABLE ONLY "public"."vagas_beneficios"
+    ADD CONSTRAINT "vagas_beneficio_Index_key" UNIQUE ("id");
 
 
 
-ALTER TABLE ONLY "public"."vagas_beneficio"
-    ADD CONSTRAINT "vagas_beneficio_pkey" PRIMARY KEY ("Index");
+ALTER TABLE ONLY "public"."vagas_beneficios"
+    ADD CONSTRAINT "vagas_beneficio_index_key" UNIQUE ("id");
+
+
+
+ALTER TABLE ONLY "public"."vagas_beneficios"
+    ADD CONSTRAINT "vagas_beneficio_pkey" PRIMARY KEY ("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_pkey" PRIMARY KEY ("vagas_id");
+    ADD CONSTRAINT "vagas_index_key" UNIQUE ("index");
 
 
 
-ALTER TABLE ONLY "public"."vagas_recorrencia"
-    ADD CONSTRAINT "vagas_recorrencia_pkey" PRIMARY KEY ("recorrencia_id");
+ALTER TABLE ONLY "public"."vagas"
+    ADD CONSTRAINT "vagas_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."vagas_recorrencias"
+    ADD CONSTRAINT "vagas_recorrencia_pkey" PRIMARY KEY ("id");
 
 
 
@@ -4589,17 +5326,12 @@ ALTER TABLE ONLY "public"."vagas_salvas"
 
 
 
-ALTER TABLE ONLY "public"."validacao_documentos"
-    ADD CONSTRAINT "validacao_documentos_pkey" PRIMARY KEY ("carteira_id");
-
-
-
-ALTER TABLE ONLY "public"."whatsappnumber"
+ALTER TABLE ONLY "public"."whatsapp_number"
     ADD CONSTRAINT "whatsappnumber_pkey" PRIMARY KEY ("updated_at");
 
 
 
-CREATE INDEX "idx_beneficio_nome" ON "public"."beneficio_tipo" USING "btree" ("beneficio_nome");
+CREATE INDEX "idx_beneficio_nome" ON "public"."beneficios" USING "btree" ("nome");
 
 
 
@@ -4607,7 +5339,7 @@ CREATE INDEX "idx_candidatura_medico" ON "public"."candidaturas" USING "btree" (
 
 
 
-CREATE INDEX "idx_candidatura_status" ON "public"."candidaturas" USING "btree" ("vagas_id", "candidatura_status");
+CREATE INDEX "idx_candidatura_status" ON "public"."candidaturas" USING "btree" ("vagas_id", "status");
 
 
 
@@ -4623,7 +5355,7 @@ CREATE INDEX "idx_candidaturas_medico_vaga" ON "public"."candidaturas" USING "bt
 
 
 
-CREATE INDEX "idx_candidaturas_status" ON "public"."candidaturas" USING "btree" ("candidatura_status");
+CREATE INDEX "idx_candidaturas_status" ON "public"."candidaturas" USING "btree" ("status");
 
 
 
@@ -4631,11 +5363,11 @@ CREATE INDEX "idx_carteira_medico" ON "public"."carteira_digital" USING "btree" 
 
 
 
-CREATE INDEX "idx_escalista_grupo" ON "public"."escalista" USING "btree" ("grupo_id");
+CREATE INDEX "idx_escalista_grupo" ON "public"."escalistas" USING "btree" ("grupo_id");
 
 
 
-CREATE INDEX "idx_escalista_nome" ON "public"."escalista" USING "btree" ("escalista_nome");
+CREATE INDEX "idx_escalista_nome" ON "public"."escalistas" USING "btree" ("nome");
 
 
 
@@ -4663,47 +5395,43 @@ CREATE INDEX "idx_grades_setor_id" ON "public"."grades" USING "btree" ("setor_id
 
 
 
-CREATE INDEX "idx_grupo_nome" ON "public"."grupo" USING "btree" ("grupo_nome");
+CREATE INDEX "idx_grupo_nome" ON "public"."grupos" USING "btree" ("nome");
 
 
 
-CREATE INDEX "idx_hospital_nome" ON "public"."hospital" USING "btree" ("hospital_nome");
+CREATE INDEX "idx_hospital_nome" ON "public"."hospitais" USING "btree" ("nome");
 
 
 
-CREATE INDEX "idx_local_medico" ON "public"."local_medico" USING "btree" ("medico_id", "local_id");
+CREATE INDEX "idx_medico_cpf" ON "public"."medicos" USING "btree" ("cpf");
 
 
 
-CREATE INDEX "idx_medico_cpf" ON "public"."medicos" USING "btree" ("medico_cpf");
+CREATE INDEX "idx_medico_crm" ON "public"."medicos" USING "btree" ("crm");
 
 
 
-CREATE INDEX "idx_medico_crm" ON "public"."medicos" USING "btree" ("medico_crm");
+CREATE INDEX "idx_medico_localidade" ON "public"."medicos" USING "btree" ("cidade", "estado");
 
 
 
-CREATE INDEX "idx_medico_localidade" ON "public"."medicos" USING "btree" ("medico_cidade", "medico_estado");
+CREATE INDEX "idx_medico_nome" ON "public"."medicos" USING "btree" ("primeiro_nome", "sobrenome");
 
 
 
-CREATE INDEX "idx_medico_nome" ON "public"."medicos" USING "btree" ("medico_primeironome", "medico_sobrenome");
+CREATE INDEX "idx_medicos_cpf" ON "public"."medicos" USING "btree" ("cpf");
 
 
 
-CREATE INDEX "idx_medicos_cpf" ON "public"."medicos" USING "btree" ("medico_cpf");
+CREATE INDEX "idx_medicos_crm" ON "public"."medicos" USING "btree" ("crm");
 
 
 
-CREATE INDEX "idx_medicos_crm" ON "public"."medicos" USING "btree" ("medico_crm");
+CREATE INDEX "idx_medicos_email" ON "public"."medicos" USING "btree" ("email");
 
 
 
-CREATE INDEX "idx_medicos_email" ON "public"."medicos" USING "btree" ("medico_email");
-
-
-
-CREATE INDEX "idx_medicos_especialidade" ON "public"."medicos" USING "btree" ("medico_especialidade");
+CREATE INDEX "idx_medicos_especialidade" ON "public"."medicos" USING "btree" ("especialidade_id");
 
 
 
@@ -4715,7 +5443,7 @@ CREATE INDEX "idx_medicos_favoritos_medico" ON "public"."medicos_favoritos" USIN
 
 
 
-CREATE UNIQUE INDEX "idx_medicos_precadastro_cpf" ON "public"."medicos_precadastro" USING "btree" ("medico_cpf") WHERE ("medico_cpf" IS NOT NULL);
+CREATE INDEX "idx_medicos_precadastro_cpf" ON "public"."medicos_precadastro" USING "btree" ("cpf");
 
 
 
@@ -4723,43 +5451,43 @@ CREATE INDEX "idx_medicos_precadastro_created_by" ON "public"."medicos_precadast
 
 
 
-CREATE UNIQUE INDEX "idx_medicos_precadastro_crm" ON "public"."medicos_precadastro" USING "btree" ("medico_crm");
+CREATE INDEX "idx_medicos_precadastro_crm" ON "public"."medicos_precadastro" USING "btree" ("crm");
 
 
 
-CREATE INDEX "idx_medicos_precadastro_nome" ON "public"."medicos_precadastro" USING "btree" ("medico_primeironome", "medico_sobrenome");
+CREATE INDEX "idx_medicos_precadastro_nome" ON "public"."medicos_precadastro" USING "btree" ("primeiro_nome", "sobrenome");
 
 
 
-CREATE INDEX "idx_medicos_status" ON "public"."medicos" USING "btree" ("medico_status");
+CREATE INDEX "idx_medicos_status" ON "public"."medicos" USING "btree" ("status");
 
 
 
-CREATE INDEX "idx_setor_nome" ON "public"."setores" USING "btree" ("setor_nome");
+CREATE INDEX "idx_setor_nome" ON "public"."setores" USING "btree" ("nome");
 
 
 
-CREATE INDEX "idx_vaga_escalista" ON "public"."vagas" USING "btree" ("vagas_escalista");
+CREATE INDEX "idx_vaga_escalista" ON "public"."vagas" USING "btree" ("escalista_id");
 
 
 
-CREATE INDEX "idx_vaga_hospital" ON "public"."vagas" USING "btree" ("vagas_hospital");
+CREATE INDEX "idx_vaga_hospital" ON "public"."vagas" USING "btree" ("hospital_id");
 
 
 
-CREATE INDEX "idx_vaga_periodo" ON "public"."vagas" USING "btree" ("vagas_data", "vagas_periodo");
+CREATE INDEX "idx_vaga_periodo" ON "public"."vagas" USING "btree" ("data", "periodo_id");
 
 
 
-CREATE INDEX "idx_vaga_setor" ON "public"."vagas" USING "btree" ("vagas_setor");
+CREATE INDEX "idx_vaga_setor" ON "public"."vagas" USING "btree" ("setor_id");
 
 
 
-CREATE INDEX "idx_vagas_data" ON "public"."vagas" USING "btree" ("vagas_data");
+CREATE INDEX "idx_vagas_data" ON "public"."vagas" USING "btree" ("data");
 
 
 
-CREATE INDEX "idx_vagas_especialidade" ON "public"."vagas" USING "btree" ("vaga_especialidade");
+CREATE INDEX "idx_vagas_especialidade" ON "public"."vagas" USING "btree" ("especialidade_id");
 
 
 
@@ -4767,7 +5495,7 @@ CREATE INDEX "idx_vagas_grade_id" ON "public"."vagas" USING "btree" ("grade_id")
 
 
 
-CREATE INDEX "idx_vagas_hospital" ON "public"."vagas" USING "btree" ("vagas_hospital");
+CREATE INDEX "idx_vagas_hospital" ON "public"."vagas" USING "btree" ("hospital_id");
 
 
 
@@ -4775,7 +5503,7 @@ CREATE INDEX "idx_vagas_recorrencia_id" ON "public"."vagas" USING "btree" ("reco
 
 
 
-CREATE INDEX "idx_vagas_status" ON "public"."vagas" USING "btree" ("vagas_status");
+CREATE INDEX "idx_vagas_status" ON "public"."vagas" USING "btree" ("status");
 
 
 
@@ -4791,47 +5519,19 @@ CREATE OR REPLACE TRIGGER "candidaturas_1_verificar_conflito_horario" BEFORE INS
 
 
 
-COMMENT ON TRIGGER "candidaturas_1_verificar_conflito_horario" ON "public"."candidaturas" IS 'Verifica data passada e conflitos de horário para usuários authenticated (roles de serviço são liberados)';
+CREATE OR REPLACE TRIGGER "candidaturas_2_auto_aprovar_favoritos" BEFORE INSERT ON "public"."candidaturas" FOR EACH ROW EXECUTE FUNCTION "public"."aprovacao_automatica_favoritos"();
 
 
 
-CREATE OR REPLACE TRIGGER "candidaturas_2_sync_medico_id" BEFORE INSERT OR UPDATE ON "public"."candidaturas" FOR EACH ROW EXECUTE FUNCTION "public"."sync_candidaturas_medico_id"();
+CREATE OR REPLACE TRIGGER "candidaturas_3_atualizar_contador_vagas" AFTER INSERT OR DELETE ON "public"."candidaturas" FOR EACH ROW EXECUTE FUNCTION "public"."update_total_candidaturas"();
 
 
 
-COMMENT ON TRIGGER "candidaturas_2_sync_medico_id" ON "public"."candidaturas" IS 'Sincroniza campos medico_id e medicos_id para compatibilidade entre versões';
+CREATE OR REPLACE TRIGGER "candidaturas_4_fechar_vaga_ao_aprovar" AFTER UPDATE ON "public"."candidaturas" FOR EACH ROW WHEN (("new"."status" = 'APROVADO'::"text")) EXECUTE FUNCTION "public"."atualizar_vagas_status"();
 
 
 
-CREATE OR REPLACE TRIGGER "candidaturas_3_auto_aprovar_favoritos" BEFORE INSERT ON "public"."candidaturas" FOR EACH ROW EXECUTE FUNCTION "public"."aprovacao_automatica_favoritos"();
-
-
-
-COMMENT ON TRIGGER "candidaturas_3_auto_aprovar_favoritos" ON "public"."candidaturas" IS 'Aprova automaticamente médicos favoritos e fecha vaga';
-
-
-
-CREATE OR REPLACE TRIGGER "candidaturas_4_atualizar_contador_vagas" AFTER INSERT OR DELETE ON "public"."candidaturas" FOR EACH ROW EXECUTE FUNCTION "public"."update_total_candidaturas"();
-
-
-
-COMMENT ON TRIGGER "candidaturas_4_atualizar_contador_vagas" ON "public"."candidaturas" IS 'Atualiza contador vagas_totalcandidaturas na tabela vagas';
-
-
-
-CREATE OR REPLACE TRIGGER "candidaturas_5_fechar_vaga_ao_aprovar" AFTER UPDATE ON "public"."candidaturas" FOR EACH ROW WHEN (("new"."candidatura_status" = 'APROVADO'::"text")) EXECUTE FUNCTION "public"."atualizar_vagas_status"();
-
-
-
-COMMENT ON TRIGGER "candidaturas_5_fechar_vaga_ao_aprovar" ON "public"."candidaturas" IS 'Fecha vaga e reprova outros candidatos quando aprovação manual ocorre';
-
-
-
-CREATE OR REPLACE TRIGGER "candidaturas_6_contar_plantoes_medico" AFTER UPDATE ON "public"."candidaturas" FOR EACH ROW WHEN (("old"."candidatura_status" IS DISTINCT FROM "new"."candidatura_status")) EXECUTE FUNCTION "public"."update_total_plantoes_medico"();
-
-
-
-COMMENT ON TRIGGER "candidaturas_6_contar_plantoes_medico" ON "public"."candidaturas" IS 'Atualiza contador de plantões do médico quando status muda para CONFIRMADO';
+CREATE OR REPLACE TRIGGER "candidaturas_5_contar_plantoes_medico" AFTER UPDATE ON "public"."candidaturas" FOR EACH ROW WHEN (("old"."status" IS DISTINCT FROM "new"."status")) EXECUTE FUNCTION "public"."update_total_plantoes_medico"();
 
 
 
@@ -4851,19 +5551,11 @@ CREATE OR REPLACE TRIGGER "medicos_1_cleanup_precadastro" AFTER INSERT ON "publi
 
 
 
-CREATE OR REPLACE TRIGGER "notifications_1_send_notification" AFTER INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "supabase_functions"."http_request"('https://hxgbaruenomkfeeafmff.supabase.co/functions/v1/notification-send', 'POST', '{}', '{}', '5000');
-
-
-
 CREATE OR REPLACE TRIGGER "trigger_grades_updated_at" BEFORE UPDATE ON "public"."grades" FOR EACH ROW EXECUTE FUNCTION "public"."handle_grades_updated_at"();
 
 
 
-CREATE OR REPLACE TRIGGER "vagas_1_reprovar_candidaturas_ao_cancelar" AFTER UPDATE OF "vagas_status" ON "public"."vagas" FOR EACH ROW EXECUTE FUNCTION "public"."atualizar_candidaturas_vaga_cancelada"();
-
-
-
-COMMENT ON TRIGGER "vagas_1_reprovar_candidaturas_ao_cancelar" ON "public"."vagas" IS 'Reprova automaticamente todas as candidaturas pendentes quando uma vaga é cancelada';
+CREATE OR REPLACE TRIGGER "vagas_1_reprovar_candidaturas_ao_cancelar" AFTER UPDATE OF "status" ON "public"."vagas" FOR EACH ROW EXECUTE FUNCTION "public"."atualizar_candidaturas_vaga_cancelada"();
 
 
 
@@ -4873,7 +5565,7 @@ ALTER TABLE ONLY "public"."candidaturas"
 
 
 ALTER TABLE ONLY "public"."candidaturas"
-    ADD CONSTRAINT "candidaturas_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "candidaturas_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -4893,42 +5585,32 @@ ALTER TABLE ONLY "public"."checkin_checkout_nofitications"
 
 
 ALTER TABLE ONLY "public"."checkin_checkout"
-    ADD CONSTRAINT "checkin_checkout_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE SET NULL;
+    ADD CONSTRAINT "checkin_checkout_vagas_id_fkey" FOREIGN KEY ("vaga_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE SET NULL;
 
 
 
 ALTER TABLE ONLY "public"."equipes_medicos"
-    ADD CONSTRAINT "equipes_medicos_equipes_id_fkey" FOREIGN KEY ("equipes_id") REFERENCES "public"."equipes"("equipes_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "equipes_medicos_equipes_id_fkey" FOREIGN KEY ("equipes_id") REFERENCES "public"."equipes"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."equipes_medicos"
-    ADD CONSTRAINT "equipes_medicos_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "equipes_medicos_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."escalista"
-    ADD CONSTRAINT "escalista_escalista_auth_id_fkey" FOREIGN KEY ("escalista_auth_id") REFERENCES "public"."user_profile"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."escalistas"
+    ADD CONSTRAINT "escalista_escalista_auth_id_fkey" FOREIGN KEY ("auth_id") REFERENCES "public"."user_profile"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."escalista"
-    ADD CONSTRAINT "escalista_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."escalistas"
+    ADD CONSTRAINT "escalista_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."equipes"
-    ADD CONSTRAINT "fk_grupo_id" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."local_medico"
-    ADD CONSTRAINT "fk_local" FOREIGN KEY ("local_id") REFERENCES "public"."local"("local_id");
-
-
-
-ALTER TABLE ONLY "public"."local_medico"
-    ADD CONSTRAINT "fk_medico" FOREIGN KEY ("medico_id") REFERENCES "public"."medicos"("id");
+    ADD CONSTRAINT "fk_grupo_id" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON DELETE CASCADE;
 
 
 
@@ -4948,7 +5630,7 @@ ALTER TABLE ONLY "public"."candidaturas"
 
 
 ALTER TABLE ONLY "public"."medicos_favoritos"
-    ADD CONSTRAINT "fk_medicos_favoritos_escalista" FOREIGN KEY ("escalista_id") REFERENCES "public"."escalista"("escalista_id") ON DELETE CASCADE;
+    ADD CONSTRAINT "fk_medicos_favoritos_escalista" FOREIGN KEY ("escalista_id") REFERENCES "public"."escalistas"("id") ON DELETE CASCADE;
 
 
 
@@ -4968,22 +5650,22 @@ ALTER TABLE ONLY "public"."grades"
 
 
 ALTER TABLE ONLY "public"."grades"
-    ADD CONSTRAINT "grades_especialidade_id_fkey" FOREIGN KEY ("especialidade_id") REFERENCES "public"."especialidades"("especialidade_id") ON DELETE RESTRICT;
+    ADD CONSTRAINT "grades_especialidade_id_fkey" FOREIGN KEY ("especialidade_id") REFERENCES "public"."especialidades"("id") ON DELETE RESTRICT;
 
 
 
 ALTER TABLE ONLY "public"."grades"
-    ADD CONSTRAINT "grades_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "grades_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."grades"
-    ADD CONSTRAINT "grades_hospital_id_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospital"("hospital_id") ON DELETE RESTRICT;
+    ADD CONSTRAINT "grades_hospital_id_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospitais"("id") ON DELETE RESTRICT;
 
 
 
 ALTER TABLE ONLY "public"."grades"
-    ADD CONSTRAINT "grades_setor_id_fkey" FOREIGN KEY ("setor_id") REFERENCES "public"."setores"("setor_id") ON DELETE RESTRICT;
+    ADD CONSTRAINT "grades_setor_id_fkey" FOREIGN KEY ("setor_id") REFERENCES "public"."setores"("id") ON DELETE RESTRICT;
 
 
 
@@ -4993,12 +5675,12 @@ ALTER TABLE ONLY "public"."grades"
 
 
 ALTER TABLE ONLY "public"."hospital_geofencing"
-    ADD CONSTRAINT "hospital_geofencing_hospital_id_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospital"("hospital_id") ON DELETE CASCADE;
+    ADD CONSTRAINT "hospital_geofencing_hospital_id_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospitais"("id") ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."medicos_favoritos"
-    ADD CONSTRAINT "medicos_favoritos_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "medicos_favoritos_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -5008,12 +5690,12 @@ ALTER TABLE ONLY "public"."medicos"
 
 
 ALTER TABLE ONLY "public"."medicos"
-    ADD CONSTRAINT "medicos_medico_especialidade_fkey" FOREIGN KEY ("medico_especialidade") REFERENCES "public"."especialidades"("especialidade_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "medicos_medico_especialidade_fkey" FOREIGN KEY ("especialidade_id") REFERENCES "public"."especialidades"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."medicos_precadastro"
-    ADD CONSTRAINT "medicos_precadastro_medico_especialidade_fkey" FOREIGN KEY ("medico_especialidade") REFERENCES "public"."especialidades"("especialidade_id");
+    ADD CONSTRAINT "medicos_precadastro_medico_especialidade_fkey" FOREIGN KEY ("especialidade_id") REFERENCES "public"."especialidades"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -5023,7 +5705,7 @@ ALTER TABLE ONLY "public"."notifications"
 
 
 ALTER TABLE ONLY "public"."pagamentos"
-    ADD CONSTRAINT "pagamentos_candidaturas_id_fkey" FOREIGN KEY ("candidaturas_id") REFERENCES "public"."candidaturas"("candidaturas_id") ON UPDATE CASCADE ON DELETE SET NULL;
+    ADD CONSTRAINT "pagamentos_candidaturas_id_fkey" FOREIGN KEY ("candidaturas_id") REFERENCES "public"."candidaturas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -5038,7 +5720,7 @@ ALTER TABLE ONLY "public"."pagamentos"
 
 
 ALTER TABLE ONLY "public"."pagamentos"
-    ADD CONSTRAINT "pagamentos_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE SET NULL;
+    ADD CONSTRAINT "pagamentos_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -5047,38 +5729,38 @@ ALTER TABLE ONLY "public"."user_profile"
 
 
 
-ALTER TABLE ONLY "public"."vagas_beneficio"
-    ADD CONSTRAINT "vagas_beneficio_beneficio_id_fkey" FOREIGN KEY ("beneficio_id") REFERENCES "public"."beneficio_tipo"("beneficio_id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."vagas_beneficios"
+    ADD CONSTRAINT "vagas_beneficio_beneficio_id_fkey" FOREIGN KEY ("beneficio_tipo_id") REFERENCES "public"."beneficios"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."vagas_beneficio"
-    ADD CONSTRAINT "vagas_beneficio_vaga_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_formarecebimento_fkey" FOREIGN KEY ("vagas_formarecebimento") REFERENCES "public"."formas_recebimento"("id");
+ALTER TABLE ONLY "public"."vagas_beneficios"
+    ADD CONSTRAINT "vagas_beneficio_vaga_id_fkey" FOREIGN KEY ("vaga_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupo"("grupo_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "vagas_formarecebimento_fkey" FOREIGN KEY ("forma_recebimento_id") REFERENCES "public"."formas_recebimento"("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_recorrencia_id_fkey" FOREIGN KEY ("recorrencia_id") REFERENCES "public"."vagas_recorrencia"("recorrencia_id");
+    ADD CONSTRAINT "vagas_grupo_id_fkey" FOREIGN KEY ("grupo_id") REFERENCES "public"."grupos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."vagas_requisito"
-    ADD CONSTRAINT "vagas_requisito_requisito_id_fkey" FOREIGN KEY ("requisito_id") REFERENCES "public"."requisito_tipo"("requisito_id") ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."vagas"
+    ADD CONSTRAINT "vagas_recorrencia_id_fkey" FOREIGN KEY ("recorrencia_id") REFERENCES "public"."vagas_recorrencias"("id");
 
 
 
-ALTER TABLE ONLY "public"."vagas_requisito"
-    ADD CONSTRAINT "vagas_requisito_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."vagas_requisitos"
+    ADD CONSTRAINT "vagas_requisito_requisito_id_fkey" FOREIGN KEY ("requisito_tipo_id") REFERENCES "public"."requisitos"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."vagas_requisitos"
+    ADD CONSTRAINT "vagas_requisito_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -5088,42 +5770,37 @@ ALTER TABLE ONLY "public"."vagas_salvas"
 
 
 ALTER TABLE ONLY "public"."vagas_salvas"
-    ADD CONSTRAINT "vagas_salvas_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("vagas_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "vagas_salvas_vagas_id_fkey" FOREIGN KEY ("vagas_id") REFERENCES "public"."vagas"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vaga_especialidade_fkey" FOREIGN KEY ("vaga_especialidade") REFERENCES "public"."especialidades"("especialidade_id");
+    ADD CONSTRAINT "vagas_vaga_especialidade_fkey" FOREIGN KEY ("especialidade_id") REFERENCES "public"."especialidades"("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vagas_escalista_fkey" FOREIGN KEY ("vagas_escalista") REFERENCES "public"."escalista"("escalista_id") ON UPDATE CASCADE ON DELETE SET DEFAULT;
+    ADD CONSTRAINT "vagas_vagas_escalista_fkey" FOREIGN KEY ("escalista_id") REFERENCES "public"."escalistas"("id") ON UPDATE CASCADE ON DELETE SET DEFAULT;
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vagas_hospital_fkey" FOREIGN KEY ("vagas_hospital") REFERENCES "public"."hospital"("hospital_id");
+    ADD CONSTRAINT "vagas_vagas_hospital_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospitais"("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vagas_periodo_fkey" FOREIGN KEY ("vagas_periodo") REFERENCES "public"."periodo"("periodo_id");
+    ADD CONSTRAINT "vagas_vagas_periodo_fkey" FOREIGN KEY ("periodo_id") REFERENCES "public"."periodos"("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vagas_setor_fkey" FOREIGN KEY ("vagas_setor") REFERENCES "public"."setores"("setor_id");
+    ADD CONSTRAINT "vagas_vagas_setor_fkey" FOREIGN KEY ("setor_id") REFERENCES "public"."setores"("id");
 
 
 
 ALTER TABLE ONLY "public"."vagas"
-    ADD CONSTRAINT "vagas_vagas_tipo_fkey" FOREIGN KEY ("vagas_tipo") REFERENCES "public"."tipovaga"("id");
-
-
-
-ALTER TABLE ONLY "public"."validacao_documentos"
-    ADD CONSTRAINT "validacao_documentos_carteira_id_fkey" FOREIGN KEY ("carteira_id") REFERENCES "public"."carteira_digital"("carteira_id") ON UPDATE CASCADE ON DELETE CASCADE;
+    ADD CONSTRAINT "vagas_vagas_tipo_fkey" FOREIGN KEY ("tipos_vaga_id") REFERENCES "public"."tipos_vaga"("id");
 
 
 
@@ -5151,12 +5828,18 @@ CREATE POLICY "Enable authenticated users to read all data" ON "public"."setores
 
 
 
-CREATE POLICY "Enable escalista users read all data" ON "public"."medicos" FOR SELECT TO "authenticated" USING (( SELECT ("auth"."uid"() IN ( SELECT "escalista"."escalista_auth_id" AS "escalista_id"
-           FROM "public"."escalista"))));
+CREATE POLICY "Enable escalista and astronauta users update medicos data" ON "public"."medicos" FOR UPDATE TO "authenticated" USING (( SELECT (EXISTS ( SELECT 1
+           FROM "public"."user_profile"
+          WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = ANY (ARRAY['escalista'::"text", 'astronauta'::"text"]))))) AS "exists"));
 
 
 
-CREATE POLICY "Enable full access to astronauta user" ON "public"."escalista" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable escalista users read all data" ON "public"."medicos" FOR SELECT TO "authenticated" USING (( SELECT ("auth"."uid"() IN ( SELECT "escalistas"."auth_id" AS "escalista_id"
+           FROM "public"."escalistas"))));
+
+
+
+CREATE POLICY "Enable full access to astronauta user" ON "public"."escalistas" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5164,7 +5847,7 @@ CREATE POLICY "Enable full access to astronauta user" ON "public"."escalista" TO
 
 
 
-CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_beneficio" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_beneficios" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5172,7 +5855,7 @@ CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_benefi
 
 
 
-CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_recorrencia" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_recorrencias" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5180,7 +5863,7 @@ CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_recorr
 
 
 
-CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_requisito" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_requisitos" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5188,7 +5871,7 @@ CREATE POLICY "Enable full access to astronauta users" ON "public"."vagas_requis
 
 
 
-CREATE POLICY "Enable full acess to astronauta user" ON "public"."grupo" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable full acess to astronauta user" ON "public"."grupos" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5196,7 +5879,7 @@ CREATE POLICY "Enable full acess to astronauta user" ON "public"."grupo" TO "aut
 
 
 
-CREATE POLICY "Enable full acess to astronauta users" ON "public"."hospital" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable full acess to astronauta users" ON "public"."hospitais" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5204,7 +5887,7 @@ CREATE POLICY "Enable full acess to astronauta users" ON "public"."hospital" TO 
 
 
 
-CREATE POLICY "Enable insert to escalista users" ON "public"."hospital" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+CREATE POLICY "Enable insert to escalista users" ON "public"."hospitais" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'escalista'::"text")))));
 
@@ -5238,15 +5921,15 @@ CREATE POLICY "Enable medicos users to view their own data only" ON "public"."me
 
 
 
-CREATE POLICY "Enable read access for all authenticated users" ON "public"."escalista" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for all authenticated users" ON "public"."escalistas" FOR SELECT TO "authenticated" USING (true);
 
 
 
-CREATE POLICY "Enable read access for all users" ON "public"."bannerMKT" FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON "public"."banner_mkt" FOR SELECT USING (true);
 
 
 
-CREATE POLICY "Enable read access for all users" ON "public"."codigosdearea" FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON "public"."codigos_area" FOR SELECT USING (true);
 
 
 
@@ -5254,7 +5937,7 @@ CREATE POLICY "Enable read access for all users" ON "public"."especialidades" FO
 
 
 
-CREATE POLICY "Enable read access for all users" ON "public"."estadosBrasil" FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON "public"."estados_brasil" FOR SELECT USING (true);
 
 
 
@@ -5262,7 +5945,7 @@ CREATE POLICY "Enable read access for all users" ON "public"."formas_recebimento
 
 
 
-CREATE POLICY "Enable read access for all users" ON "public"."vagas_beneficio" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for all users" ON "public"."vagas_beneficios" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -5270,23 +5953,23 @@ CREATE POLICY "Enable read access for anon" ON "public"."user_profile" FOR SELEC
 
 
 
-CREATE POLICY "Enable read access for authenticated users" ON "public"."beneficio_tipo" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for authenticated users" ON "public"."beneficios" FOR SELECT TO "authenticated" USING (true);
 
 
 
-CREATE POLICY "Enable read access for authenticated users" ON "public"."hospital" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for authenticated users" ON "public"."hospitais" FOR SELECT TO "authenticated" USING (true);
 
 
 
-CREATE POLICY "Enable read access for authenticated users" ON "public"."periodo" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for authenticated users" ON "public"."periodos" FOR SELECT TO "authenticated" USING (true);
 
 
 
-CREATE POLICY "Enable read access for authenticated users" ON "public"."tipovaga" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for authenticated users" ON "public"."tipos_vaga" FOR SELECT TO "authenticated" USING (true);
 
 
 
-CREATE POLICY "Enable read access for authenticated users" ON "public"."whatsappnumber" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read access for authenticated users" ON "public"."whatsapp_number" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -5296,7 +5979,7 @@ CREATE POLICY "Enable read access to escalista users" ON "public"."checkin_check
 
 
 
-CREATE POLICY "Enable read for authenticated users" ON "public"."vagas_requisito" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read for authenticated users" ON "public"."vagas_requisitos" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -5310,7 +5993,7 @@ CREATE POLICY "Enable read to astronauta and escalista users" ON "public"."vagas
 
 
 
-CREATE POLICY "Enable read to authenticated users" ON "public"."requisito_tipo" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable read to authenticated users" ON "public"."requisitos" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -5318,7 +6001,7 @@ CREATE POLICY "Enable read to authenticated users" ON "public"."user_profile" FO
 
 
 
-CREATE POLICY "Enable read to medico users" ON "public"."grupo" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable read to medico users" ON "public"."grupos" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'free'::"text")))));
 
@@ -5332,7 +6015,7 @@ CREATE POLICY "Enable update to anon" ON "public"."email_verification_tokens" FO
 
 
 
-CREATE POLICY "Enable update to escalista users" ON "public"."hospital" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Enable update to escalista users" ON "public"."hospitais" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'escalista'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."user_profile"
@@ -5348,9 +6031,9 @@ CREATE POLICY "Insert policy" ON "public"."equipes_medicos" FOR INSERT TO "authe
 
 
 
-CREATE POLICY "Insert policy" ON "public"."medicos_precadastro" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "e"."escalista_id"
-   FROM "public"."escalista" "e"
-  WHERE ("e"."escalista_auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
+CREATE POLICY "Insert policy" ON "public"."medicos_precadastro" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "e"."id" AS "escalista_id"
+   FROM "public"."escalistas" "e"
+  WHERE ("e"."auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))));
 
@@ -5384,13 +6067,13 @@ CREATE POLICY "Update policy" ON "public"."equipes_medicos" FOR UPDATE TO "authe
 
 
 
-CREATE POLICY "Update policy" ON "public"."medicos_precadastro" FOR UPDATE TO "authenticated" USING (((( SELECT "e"."escalista_id"
-   FROM "public"."escalista" "e"
-  WHERE ("e"."escalista_auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
+CREATE POLICY "Update policy" ON "public"."medicos_precadastro" FOR UPDATE TO "authenticated" USING (((( SELECT "e"."id" AS "escalista_id"
+   FROM "public"."escalistas" "e"
+  WHERE ("e"."auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
    FROM "public"."user_profile"
-  WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))))) WITH CHECK (((( SELECT "e"."escalista_id"
-   FROM "public"."escalista" "e"
-  WHERE ("e"."escalista_auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
+  WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))))) WITH CHECK (((( SELECT "e"."id" AS "escalista_id"
+   FROM "public"."escalistas" "e"
+  WHERE ("e"."auth_id" = "auth"."uid"())) = "created_by") OR (EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text"))))));
 
@@ -5430,10 +6113,10 @@ CREATE POLICY "astronauts_can_update_grades" ON "public"."grades" FOR UPDATE USI
 
 
 
-ALTER TABLE "public"."bannerMKT" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."banner_mkt" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."beneficio_tipo" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."beneficios" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."candidaturas" ENABLE ROW LEVEL SECURITY;
@@ -5443,7 +6126,7 @@ CREATE POLICY "candidaturas_delete_policy" ON "public"."candidaturas" FOR DELETE
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR (("public"."get_current_user_grupo_id"() IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
+  WHERE (("v"."id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_id" = "auth"."uid"()))));
@@ -5454,7 +6137,7 @@ CREATE POLICY "candidaturas_insert_policy" ON "public"."candidaturas" FOR INSERT
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR (("public"."get_current_user_grupo_id"() IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
+  WHERE (("v"."id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_id" = "auth"."uid"()))));
@@ -5465,7 +6148,7 @@ CREATE POLICY "candidaturas_select_policy" ON "public"."candidaturas" FOR SELECT
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR (("public"."get_current_user_grupo_id"() IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
+  WHERE (("v"."id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_id" = "auth"."uid"())) OR ((EXISTS ( SELECT 1
@@ -5474,10 +6157,10 @@ CREATE POLICY "candidaturas_select_policy" ON "public"."candidaturas" FOR SELECT
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_precadastro_id" = "auth"."uid"())) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
-  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND "public"."pode_ver_candidatura_colega"("candidaturas_id")) OR ((EXISTS ( SELECT 1
+  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND "public"."pode_ver_candidatura_colega"("id")) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos_precadastro" "mp" ON (("mp"."id" = "up"."id")))
-  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND "public"."pode_ver_candidatura_colega"("candidaturas_id"))));
+  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND "public"."pode_ver_candidatura_colega"("id"))));
 
 
 
@@ -5485,14 +6168,14 @@ CREATE POLICY "candidaturas_update_policy" ON "public"."candidaturas" FOR UPDATE
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR (("public"."get_current_user_grupo_id"() IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
+  WHERE (("v"."id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_id" = "auth"."uid"())))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR (("public"."get_current_user_grupo_id"() IS NOT NULL) AND (EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
+  WHERE (("v"."id" = "candidaturas"."vagas_id") AND ("v"."grupo_id" = "public"."get_current_user_grupo_id"()))))) OR ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
      JOIN "public"."medicos" "m" ON (("m"."id" = "up"."id")))
   WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'free'::"text")))) AND ("medico_id" = "auth"."uid"()))));
@@ -5511,7 +6194,7 @@ ALTER TABLE "public"."checkin_checkout_nofitications" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."clean_hospital" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."codigosdearea" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."codigos_area" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."email_verification_tokens" ENABLE ROW LEVEL SECURITY;
@@ -5523,10 +6206,7 @@ ALTER TABLE "public"."equipes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."equipes_medicos" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."escalista" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "escalista_policy" ON "public"."escalista" TO "authenticated" USING (
+CREATE POLICY "escalista_policy" ON "public"."escalistas" TO "authenticated" USING (
 CASE
     WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
     ELSE ("grupo_id" = "public"."get_current_user_grupo_id"())
@@ -5534,17 +6214,20 @@ END);
 
 
 
-CREATE POLICY "escalista_read_own_grupo" ON "public"."grupo" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "escalista_read_own_grupo" ON "public"."grupos" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM ("public"."user_profile" "up"
-     JOIN "public"."escalista" "e" ON (("e"."escalista_auth_id" = "up"."id")))
-  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'escalista'::"text") AND ("e"."grupo_id" = "grupo"."grupo_id")))));
+     JOIN "public"."escalistas" "e" ON (("e"."auth_id" = "up"."id")))
+  WHERE (("up"."id" = "auth"."uid"()) AND ("up"."role" = 'escalista'::"text") AND ("e"."grupo_id" = "grupos"."id")))));
 
+
+
+ALTER TABLE "public"."escalistas" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."especialidades" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."estadosBrasil" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."estados_brasil" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."formas_recebimento" ENABLE ROW LEVEL SECURITY;
@@ -5557,15 +6240,7 @@ CREATE POLICY "grades_delete_by_group" ON "public"."grades" FOR DELETE USING (("
 
 
 
-COMMENT ON POLICY "grades_delete_by_group" ON "public"."grades" IS 'Permite que usuários deletem apenas grades do seu próprio grupo';
-
-
-
 CREATE POLICY "grades_insert_by_group" ON "public"."grades" FOR INSERT WITH CHECK (("grupo_id" = "public"."get_current_user_grupo_id"()));
-
-
-
-COMMENT ON POLICY "grades_insert_by_group" ON "public"."grades" IS 'Permite que usuários criem grades apenas para seu próprio grupo';
 
 
 
@@ -5573,31 +6248,17 @@ CREATE POLICY "grades_select_by_group" ON "public"."grades" FOR SELECT USING (("
 
 
 
-COMMENT ON POLICY "grades_select_by_group" ON "public"."grades" IS 'Permite que usuários vejam apenas grades do seu próprio grupo';
-
-
-
 CREATE POLICY "grades_update_by_group" ON "public"."grades" FOR UPDATE USING (("grupo_id" = "public"."get_current_user_grupo_id"())) WITH CHECK (("grupo_id" = "public"."get_current_user_grupo_id"()));
 
 
 
-COMMENT ON POLICY "grades_update_by_group" ON "public"."grades" IS 'Permite que usuários atualizem apenas grades do seu próprio grupo';
+ALTER TABLE "public"."grupos" ENABLE ROW LEVEL SECURITY;
 
 
-
-ALTER TABLE "public"."grupo" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."hospital" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."hospitais" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."hospital_geofencing" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."local" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."local_medico" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."medicos" ENABLE ROW LEVEL SECURITY;
@@ -5625,7 +6286,7 @@ ALTER TABLE "public"."pagamentos" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "pagamentos_escalista_policy" ON "public"."pagamentos" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "pagamentos"."vagas_id") AND
+  WHERE (("v"."id" = "pagamentos"."vagas_id") AND
         CASE
             WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
             ELSE ("v"."grupo_id" = "public"."get_current_user_grupo_id"())
@@ -5633,22 +6294,16 @@ CREATE POLICY "pagamentos_escalista_policy" ON "public"."pagamentos" TO "authent
 
 
 
-ALTER TABLE "public"."periodo" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."periodos" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."requisito_tipo" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."requisitos" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."setores" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."sistema_logs" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."tipos_documentos" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."tipovaga" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."tipos_vaga" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."user_profile" ENABLE ROW LEVEL SECURITY;
@@ -5657,23 +6312,23 @@ ALTER TABLE "public"."user_profile" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."vagas" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."vagas_beneficio" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "vagas_beneficio_escalista_policy" ON "public"."vagas_beneficio" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "vagas_beneficio_escalista_policy" ON "public"."vagas_beneficios" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "vagas_beneficio"."vagas_id") AND
+  WHERE (("v"."id" = "vagas_beneficios"."vaga_id") AND
         CASE
             WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
             ELSE ("v"."grupo_id" = "public"."get_current_user_grupo_id"())
         END)))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "vagas_beneficio"."vagas_id") AND
+  WHERE (("v"."id" = "vagas_beneficios"."vaga_id") AND
         CASE
             WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
             ELSE ("v"."grupo_id" = "public"."get_current_user_grupo_id"())
         END))));
 
+
+
+ALTER TABLE "public"."vagas_beneficios" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "vagas_delete_policy" ON "public"."vagas" FOR DELETE TO "authenticated" USING (((EXISTS ( SELECT 1
@@ -5688,37 +6343,37 @@ CREATE POLICY "vagas_insert_policy" ON "public"."vagas" FOR INSERT TO "authentic
 
 
 
-ALTER TABLE "public"."vagas_recorrencia" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "vagas_recorrencia_escalista_policy" ON "public"."vagas_recorrencia" TO "authenticated" USING (((EXISTS ( SELECT 1
+CREATE POLICY "vagas_recorrencia_escalista_policy" ON "public"."vagas_recorrencias" TO "authenticated" USING (((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR ("created_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
    FROM ("public"."vagas" "v"
-     JOIN "public"."escalista" "e" ON (("e"."grupo_id" = "v"."grupo_id")))
-  WHERE (("v"."recorrencia_id" = "vagas_recorrencia"."recorrencia_id") AND ("e"."escalista_auth_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+     JOIN "public"."escalistas" "e" ON (("e"."grupo_id" = "v"."grupo_id")))
+  WHERE (("v"."recorrencia_id" = "vagas_recorrencias"."id") AND ("e"."auth_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."user_profile"
   WHERE (("user_profile"."id" = "auth"."uid"()) AND ("user_profile"."role" = 'astronauta'::"text")))) OR ("created_by" = "auth"."uid"())));
 
 
 
-ALTER TABLE "public"."vagas_requisito" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."vagas_recorrencias" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "vagas_requisito_escalista_policy" ON "public"."vagas_requisito" TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "vagas_requisito_escalista_policy" ON "public"."vagas_requisitos" TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "vagas_requisito"."vagas_id") AND
+  WHERE (("v"."id" = "vagas_requisitos"."vagas_id") AND
         CASE
             WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
             ELSE ("v"."grupo_id" = "public"."get_current_user_grupo_id"())
         END)))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."vagas" "v"
-  WHERE (("v"."vagas_id" = "vagas_requisito"."vagas_id") AND
+  WHERE (("v"."id" = "vagas_requisitos"."vagas_id") AND
         CASE
             WHEN ("public"."get_current_user_grupo_id"() IS NULL) THEN true
             ELSE ("v"."grupo_id" = "public"."get_current_user_grupo_id"())
         END))));
 
+
+
+ALTER TABLE "public"."vagas_requisitos" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."vagas_salvas" ENABLE ROW LEVEL SECURITY;
@@ -5736,28 +6391,18 @@ CREATE POLICY "vagas_update_policy" ON "public"."vagas" FOR UPDATE TO "authentic
    FROM "public"."user_profile"
   WHERE ("user_profile"."id" = "auth"."uid"())) = 'free'::"text") OR ((( SELECT "user_profile"."role"
    FROM "public"."user_profile"
-  WHERE ("user_profile"."id" = "auth"."uid"())) = 'escalista'::"text") AND ("grupo_id" = ( SELECT "escalista"."grupo_id"
-   FROM "public"."escalista"
-  WHERE ("escalista"."escalista_auth_id" = "auth"."uid"()))))));
+  WHERE ("user_profile"."id" = "auth"."uid"())) = 'escalista'::"text") AND ("grupo_id" = ( SELECT "escalistas"."grupo_id"
+   FROM "public"."escalistas"
+  WHERE ("escalistas"."auth_id" = "auth"."uid"()))))));
 
 
 
-ALTER TABLE "public"."validacao_documentos" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."whatsappnumber" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."whatsapp_number" ENABLE ROW LEVEL SECURITY;
 
 
 
 
 ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
-
-
-
-
-
-
-
 
 
 
@@ -5781,30 +6426,6 @@ GRANT ALL ON FUNCTION "public"."gtrgm_out"("public"."gtrgm") TO "postgres";
 GRANT ALL ON FUNCTION "public"."gtrgm_out"("public"."gtrgm") TO "anon";
 GRANT ALL ON FUNCTION "public"."gtrgm_out"("public"."gtrgm") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."gtrgm_out"("public"."gtrgm") TO "service_role";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -6177,6 +6798,12 @@ GRANT ALL ON FUNCTION "public"."editar_vagas_recorrencia"("p_recorrencia_id" "uu
 
 
 
+GRANT ALL ON FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."excluir_vagas_lote"("vagas_ids" "uuid"[]) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid") TO "service_role";
@@ -6186,6 +6813,12 @@ GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uui
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid", "p_beneficios" "text"[], "p_requisitos" "text"[]) TO "anon";
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid", "p_beneficios" "text"[], "p_requisitos" "text"[]) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."gerar_vagas_recorrentes"("p_recorrencia_id" "uuid", "p_vaga_base_id" "uuid", "p_medico_id" "uuid", "p_created_by" "uuid", "p_beneficios" "text"[], "p_requisitos" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_applications_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_applications_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_applications_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "service_role";
 
 
 
@@ -6258,6 +6891,12 @@ GRANT ALL ON FUNCTION "public"."get_phonenumber"("p_phone" "text") TO "service_r
 GRANT ALL ON FUNCTION "public"."get_urls_pendentes"("p_carteira_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_urls_pendentes"("p_carteira_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_urls_pendentes"("p_carteira_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_vagas_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_vagas_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_vagas_paginated"("page_number" integer, "page_size" integer, "hospital_ids" "uuid"[], "specialty_ids" "uuid"[], "sector_ids" "uuid"[], "start_date" "date", "end_date" "date", "min_value" numeric, "max_value" numeric, "period_ids" "uuid"[], "type_ids" "uuid"[], "group_ids" "uuid"[], "search_text" "text", "doctor_ids" "uuid"[], "application_status_filter" "text"[], "job_status_filter" "text"[], "grade_ids" "uuid"[], "order_by" "text", "order_direction" "text") TO "service_role";
 
 
 
@@ -6495,12 +7134,6 @@ GRANT ALL ON FUNCTION "public"."strict_word_similarity_op"("text", "text") TO "s
 
 
 
-GRANT ALL ON FUNCTION "public"."sync_candidaturas_medico_id"() TO "anon";
-GRANT ALL ON FUNCTION "public"."sync_candidaturas_medico_id"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."sync_candidaturas_medico_id"() TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."sync_pagamentos_medico_id"() TO "anon";
 GRANT ALL ON FUNCTION "public"."sync_pagamentos_medico_id"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sync_pagamentos_medico_id"() TO "service_role";
@@ -6585,6 +7218,12 @@ GRANT ALL ON FUNCTION "public"."verificar_conflito_antes_candidatura"() TO "serv
 
 
 
+GRANT ALL ON FUNCTION "public"."verificar_conflito_vaga_designada"("p_medico_id" "uuid", "p_data" "date", "p_hora_inicio" time without time zone, "p_hora_fim" time without time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."verificar_conflito_vaga_designada"("p_medico_id" "uuid", "p_data" "date", "p_hora_inicio" time without time zone, "p_hora_fim" time without time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."verificar_conflito_vaga_designada"("p_medico_id" "uuid", "p_data" "date", "p_hora_inicio" time without time zone, "p_hora_fim" time without time zone) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."verificar_consistencia_status_vagas"() TO "anon";
 GRANT ALL ON FUNCTION "public"."verificar_consistencia_status_vagas"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."verificar_consistencia_status_vagas"() TO "service_role";
@@ -6641,15 +7280,9 @@ GRANT ALL ON FUNCTION "public"."word_similarity_op"("text", "text") TO "service_
 
 
 
-
-
-
-
-
-
-GRANT ALL ON TABLE "public"."bannerMKT" TO "anon";
-GRANT ALL ON TABLE "public"."bannerMKT" TO "authenticated";
-GRANT ALL ON TABLE "public"."bannerMKT" TO "service_role";
+GRANT ALL ON TABLE "public"."banner_mkt" TO "anon";
+GRANT ALL ON TABLE "public"."banner_mkt" TO "authenticated";
+GRANT ALL ON TABLE "public"."banner_mkt" TO "service_role";
 
 
 
@@ -6659,9 +7292,9 @@ GRANT ALL ON SEQUENCE "public"."bannerMKT_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."beneficio_tipo" TO "anon";
-GRANT ALL ON TABLE "public"."beneficio_tipo" TO "authenticated";
-GRANT ALL ON TABLE "public"."beneficio_tipo" TO "service_role";
+GRANT ALL ON TABLE "public"."beneficios" TO "anon";
+GRANT ALL ON TABLE "public"."beneficios" TO "authenticated";
+GRANT ALL ON TABLE "public"."beneficios" TO "service_role";
 
 
 
@@ -6707,9 +7340,9 @@ GRANT ALL ON SEQUENCE "public"."clean_hospital_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."codigosdearea" TO "anon";
-GRANT ALL ON TABLE "public"."codigosdearea" TO "authenticated";
-GRANT ALL ON TABLE "public"."codigosdearea" TO "service_role";
+GRANT ALL ON TABLE "public"."codigos_area" TO "anon";
+GRANT ALL ON TABLE "public"."codigos_area" TO "authenticated";
+GRANT ALL ON TABLE "public"."codigos_area" TO "service_role";
 
 
 
@@ -6737,9 +7370,9 @@ GRANT ALL ON TABLE "public"."equipes_medicos" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."escalista" TO "anon";
-GRANT ALL ON TABLE "public"."escalista" TO "authenticated";
-GRANT ALL ON TABLE "public"."escalista" TO "service_role";
+GRANT ALL ON TABLE "public"."escalistas" TO "anon";
+GRANT ALL ON TABLE "public"."escalistas" TO "authenticated";
+GRANT ALL ON TABLE "public"."escalistas" TO "service_role";
 
 
 
@@ -6749,9 +7382,9 @@ GRANT ALL ON TABLE "public"."especialidades" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."estadosBrasil" TO "anon";
-GRANT ALL ON TABLE "public"."estadosBrasil" TO "authenticated";
-GRANT ALL ON TABLE "public"."estadosBrasil" TO "service_role";
+GRANT ALL ON TABLE "public"."estados_brasil" TO "anon";
+GRANT ALL ON TABLE "public"."estados_brasil" TO "authenticated";
+GRANT ALL ON TABLE "public"."estados_brasil" TO "service_role";
 
 
 
@@ -6767,33 +7400,21 @@ GRANT ALL ON TABLE "public"."grades" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."grupo" TO "anon";
-GRANT ALL ON TABLE "public"."grupo" TO "authenticated";
-GRANT ALL ON TABLE "public"."grupo" TO "service_role";
+GRANT ALL ON TABLE "public"."grupos" TO "anon";
+GRANT ALL ON TABLE "public"."grupos" TO "authenticated";
+GRANT ALL ON TABLE "public"."grupos" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."hospital" TO "anon";
-GRANT ALL ON TABLE "public"."hospital" TO "authenticated";
-GRANT ALL ON TABLE "public"."hospital" TO "service_role";
+GRANT ALL ON TABLE "public"."hospitais" TO "anon";
+GRANT ALL ON TABLE "public"."hospitais" TO "authenticated";
+GRANT ALL ON TABLE "public"."hospitais" TO "service_role";
 
 
 
 GRANT ALL ON TABLE "public"."hospital_geofencing" TO "anon";
 GRANT ALL ON TABLE "public"."hospital_geofencing" TO "authenticated";
 GRANT ALL ON TABLE "public"."hospital_geofencing" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."local" TO "anon";
-GRANT ALL ON TABLE "public"."local" TO "authenticated";
-GRANT ALL ON TABLE "public"."local" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."local_medico" TO "anon";
-GRANT ALL ON TABLE "public"."local_medico" TO "authenticated";
-GRANT ALL ON TABLE "public"."local_medico" TO "service_role";
 
 
 
@@ -6827,15 +7448,15 @@ GRANT ALL ON TABLE "public"."pagamentos" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."periodo" TO "anon";
-GRANT ALL ON TABLE "public"."periodo" TO "authenticated";
-GRANT ALL ON TABLE "public"."periodo" TO "service_role";
+GRANT ALL ON TABLE "public"."periodos" TO "anon";
+GRANT ALL ON TABLE "public"."periodos" TO "authenticated";
+GRANT ALL ON TABLE "public"."periodos" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."requisito_tipo" TO "anon";
-GRANT ALL ON TABLE "public"."requisito_tipo" TO "authenticated";
-GRANT ALL ON TABLE "public"."requisito_tipo" TO "service_role";
+GRANT ALL ON TABLE "public"."requisitos" TO "anon";
+GRANT ALL ON TABLE "public"."requisitos" TO "authenticated";
+GRANT ALL ON TABLE "public"."requisitos" TO "service_role";
 
 
 
@@ -6845,21 +7466,9 @@ GRANT ALL ON TABLE "public"."setores" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."sistema_logs" TO "anon";
-GRANT ALL ON TABLE "public"."sistema_logs" TO "authenticated";
-GRANT ALL ON TABLE "public"."sistema_logs" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."tipos_documentos" TO "anon";
-GRANT ALL ON TABLE "public"."tipos_documentos" TO "authenticated";
-GRANT ALL ON TABLE "public"."tipos_documentos" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."tipovaga" TO "anon";
-GRANT ALL ON TABLE "public"."tipovaga" TO "authenticated";
-GRANT ALL ON TABLE "public"."tipovaga" TO "service_role";
+GRANT ALL ON TABLE "public"."tipos_vaga" TO "anon";
+GRANT ALL ON TABLE "public"."tipos_vaga" TO "authenticated";
+GRANT ALL ON TABLE "public"."tipos_vaga" TO "service_role";
 
 
 
@@ -6881,9 +7490,9 @@ GRANT ALL ON SEQUENCE "public"."vagas_Index_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vagas_beneficio" TO "anon";
-GRANT ALL ON TABLE "public"."vagas_beneficio" TO "authenticated";
-GRANT ALL ON TABLE "public"."vagas_beneficio" TO "service_role";
+GRANT ALL ON TABLE "public"."vagas_beneficios" TO "anon";
+GRANT ALL ON TABLE "public"."vagas_beneficios" TO "authenticated";
+GRANT ALL ON TABLE "public"."vagas_beneficios" TO "service_role";
 
 
 
@@ -6899,15 +7508,15 @@ GRANT ALL ON TABLE "public"."vagas_completo" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vagas_recorrencia" TO "anon";
-GRANT ALL ON TABLE "public"."vagas_recorrencia" TO "authenticated";
-GRANT ALL ON TABLE "public"."vagas_recorrencia" TO "service_role";
+GRANT ALL ON TABLE "public"."vagas_recorrencias" TO "anon";
+GRANT ALL ON TABLE "public"."vagas_recorrencias" TO "authenticated";
+GRANT ALL ON TABLE "public"."vagas_recorrencias" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vagas_requisito" TO "anon";
-GRANT ALL ON TABLE "public"."vagas_requisito" TO "authenticated";
-GRANT ALL ON TABLE "public"."vagas_requisito" TO "service_role";
+GRANT ALL ON TABLE "public"."vagas_requisitos" TO "anon";
+GRANT ALL ON TABLE "public"."vagas_requisitos" TO "authenticated";
+GRANT ALL ON TABLE "public"."vagas_requisitos" TO "service_role";
 
 
 
@@ -6923,63 +7532,9 @@ GRANT ALL ON SEQUENCE "public"."vagas_salvas_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."validacao_documentos" TO "anon";
-GRANT ALL ON TABLE "public"."validacao_documentos" TO "authenticated";
-GRANT ALL ON TABLE "public"."validacao_documentos" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_candidaturas_pendentes" TO "anon";
-GRANT ALL ON TABLE "public"."vw_candidaturas_pendentes" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_candidaturas_pendentes" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_candidaturas_por_dia" TO "anon";
-GRANT ALL ON TABLE "public"."vw_candidaturas_por_dia" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_candidaturas_por_dia" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_dashboard_metrics" TO "anon";
-GRANT ALL ON TABLE "public"."vw_dashboard_metrics" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_dashboard_metrics" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_distribuicao_especialidades" TO "anon";
-GRANT ALL ON TABLE "public"."vw_distribuicao_especialidades" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_distribuicao_especialidades" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_grupo_nome" TO "anon";
-GRANT ALL ON TABLE "public"."vw_grupo_nome" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_grupo_nome" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_ocupacao_plantoes" TO "anon";
-GRANT ALL ON TABLE "public"."vw_ocupacao_plantoes" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_ocupacao_plantoes" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_relatorio_folhapagamento" TO "anon";
-GRANT ALL ON TABLE "public"."vw_relatorio_folhapagamento" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_relatorio_folhapagamento" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_todas_candidaturas" TO "anon";
-GRANT ALL ON TABLE "public"."vw_todas_candidaturas" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_todas_candidaturas" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_usuarios_por_dia" TO "anon";
-GRANT ALL ON TABLE "public"."vw_usuarios_por_dia" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_usuarios_por_dia" TO "service_role";
+GRANT ALL ON TABLE "public"."vw_folha_pagamento" TO "anon";
+GRANT ALL ON TABLE "public"."vw_folha_pagamento" TO "authenticated";
+GRANT ALL ON TABLE "public"."vw_folha_pagamento" TO "service_role";
 
 
 
@@ -6989,39 +7544,15 @@ GRANT ALL ON TABLE "public"."vw_vagas_candidaturas" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vw_vagas_dias_contagem" TO "anon";
-GRANT ALL ON TABLE "public"."vw_vagas_dias_contagem" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_vagas_dias_contagem" TO "service_role";
+GRANT ALL ON TABLE "public"."whatsapp_number" TO "anon";
+GRANT ALL ON TABLE "public"."whatsapp_number" TO "authenticated";
+GRANT ALL ON TABLE "public"."whatsapp_number" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vw_vagas_disponiveis" TO "anon";
-GRANT ALL ON TABLE "public"."vw_vagas_disponiveis" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_vagas_disponiveis" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."vw_vagas_especialidade" TO "anon";
-GRANT ALL ON TABLE "public"."vw_vagas_especialidade" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_vagas_especialidade" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_vagas_grade_info" TO "anon";
-GRANT ALL ON TABLE "public"."vw_vagas_grade_info" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_vagas_grade_info" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."vw_vagas_por_mes" TO "anon";
-GRANT ALL ON TABLE "public"."vw_vagas_por_mes" TO "authenticated";
-GRANT ALL ON TABLE "public"."vw_vagas_por_mes" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."whatsappnumber" TO "anon";
-GRANT ALL ON TABLE "public"."whatsappnumber" TO "authenticated";
-GRANT ALL ON TABLE "public"."whatsappnumber" TO "service_role";
 
 
 
