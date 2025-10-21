@@ -197,6 +197,7 @@ FROM (
     LEFT JOIN pagamentos pg ON pg.candidatura_id = c.id
 ) combined_data;
 
+DROP POLICY IF EXISTS vagas_select_rbac ON public.vagas;
 CREATE POLICY vagas_select_rbac
 ON public.vagas
 FOR SELECT
@@ -212,23 +213,26 @@ begin
 
 end $$;
 
+DROP POLICY IF EXISTS escalista_read_all ON public.escalistas;
 create policy "escalista_read_all" on public.escalistas
   for select
   to authenticated
   using (houston.authorize('membros.view'));
 
+DROP POLICY IF EXISTS escalista_insert_own ON public.escalistas;
   create policy "escalista_insert_own" on public.escalistas
   for insert
   to authenticated
   with check (houston.authorize('membros.add'));
 
-
+DROP POLICY IF EXISTS escalista_update_own ON public.escalistas;
   create policy "escalista_update_own" on public.escalistas
   for update
   to authenticated
   using (houston.authorize('membros.edit'))
   with check (houston.authorize('membros.edit'));
 
+DROP POLICY IF EXISTS escalista_delete_own ON public.escalistas;
   create policy "escalista_delete_own" on public.escalistas
   for delete
   to authenticated
@@ -242,23 +246,26 @@ begin
   drop policy if exists "Enable read to medico users" on public.grupos;
 end $$;
 
-
+DROP POLICY IF EXISTS grupo_read_all ON public.grupos;
 create policy "grupo_read_all" on public.grupos
   for select
   to authenticated
   using (houston.authorize('grupos.view'));
 
+DROP POLICY IF EXISTS grupo_insert_own ON public.grupos;
   create policy "grupo_insert_own" on public.grupos
   for insert
   to authenticated
   with check (houston.authorize('grupos.add'));
 
+DROP POLICY IF EXISTS grupo_update_own ON public.grupos;
   create policy "grupo_update_own" on public.grupos
   for update
   to authenticated
   using (houston.authorize('grupos.edit'))
   with check (houston.authorize('grupos.edit'));
 
+DROP POLICY IF EXISTS grupo_delete_own ON public.grupos;    
   create policy "grupo_delete_own" on public.grupos
   for delete
   to authenticated
