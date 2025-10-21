@@ -204,3 +204,62 @@ TO authenticated
 USING (
   houston.scheduler_belongs_can_access('vagas.view',vagas.hospital_id,vagas.setor_id, vagas.grupo_id )
 );
+
+do $$
+begin
+  drop policy if exists "Enable full access to astronauta user" on public.escalistas;
+  drop policy if exists "Enable read access for all authenticated users" on public.escalistas;
+
+end $$;
+
+create policy "escalista_read_all" on public.escalistas
+  for select
+  to authenticated
+  using (houston.authorize('membros.view'));
+
+  create policy "escalista_insert_own" on public.escalistas
+  for insert
+  to authenticated
+  with check (houston.authorize('membros.add'));
+
+
+  create policy "escalista_update_own" on public.escalistas
+  for update
+  to authenticated
+  using (houston.authorize('membros.edit'))
+  with check (houston.authorize('membros.edit'));
+
+  create policy "escalista_delete_own" on public.escalistas
+  for delete
+  to authenticated
+  using (houston.authorize('membros.remove'));
+
+do $$
+
+begin
+  drop policy if exists "Enable full acess to astronauta user" on public.grupos;
+  drop policy if exists "Enable read to medico users" on public.grupos;
+  drop policy if exists "Enable read to medico users" on public.grupos;
+end $$;
+
+
+create policy "grupo_read_all" on public.grupos
+  for select
+  to authenticated
+  using (houston.authorize('grupos.view'));
+
+  create policy "grupo_insert_own" on public.grupos
+  for insert
+  to authenticated
+  with check (houston.authorize('grupos.add'));
+
+  create policy "grupo_update_own" on public.grupos
+  for update
+  to authenticated
+  using (houston.authorize('grupos.edit'))
+  with check (houston.authorize('grupos.edit'));
+
+  create policy "grupo_delete_own" on public.grupos
+  for delete
+  to authenticated
+  using (houston.authorize('grupos.remove'));
