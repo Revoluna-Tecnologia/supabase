@@ -38,14 +38,6 @@ END$$;
 -- Permissões mapeadas: view -> SELECT, create -> INSERT, edit -> UPDATE, delete -> DELETE
 -- =============================
 
-CREATE POLICY vagas_select_rbac
-ON public.vagas
-FOR SELECT
-TO authenticated
-USING (
-  houston.scheduler_belongs_can_access('vagas.view',vagas.hospital_id,vagas.setor_id, vagas.grupo_id )
-);
-
 CREATE POLICY vagas_insert_rbac
 ON public.vagas
 FOR INSERT
