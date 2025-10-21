@@ -9,7 +9,7 @@ DROP VIEW IF EXISTS public.vw_vagas_por_mes;                -- Depende de vagas_
 DROP VIEW IF EXISTS public.vagas_completo;                  -- Depende diretamente de escalista_id
 DROP VIEW IF EXISTS public.vw_candidaturas_pendentes;
 DROP VIEW IF EXISTS public.vw_todas_candidaturas;  
---DROP VIEW IF EXISTS public.vw_vagas_candidaturas;
+DROP VIEW IF EXISTS public.vw_vagas_candidaturas;
 
 -- 2. Remover policies que dependem de escalista_auth_id
 DROP POLICY IF EXISTS escalista_read_own_grupo ON public.grupos;
