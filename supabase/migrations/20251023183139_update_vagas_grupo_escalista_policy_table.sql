@@ -42,8 +42,8 @@ TO authenticated
 USING (
   houston.authorize(
     'vagas.view'::houston.app_permission,
-    vagas_hospital,    -- hospital_id
-    vagas_setor,       -- setor_id
+    hospital_id,    -- hospital_id
+    setor_id,       -- setor_id
     grupo_id           -- group_id
   )
 );
@@ -56,9 +56,9 @@ TO authenticated
 WITH CHECK (
   houston.authorize(
     'vagas.create'::houston.app_permission,
-    vagas_hospital,    -- hospital_id
-    vagas_setor,       -- setor_id
-    grupo_id           -- group_id
+    hospital_id,    -- hospital_id
+    setor_id,       -- setor_id
+    grupo_id        -- group_id
   )
 );
 
@@ -70,16 +70,16 @@ TO authenticated
 USING (
   houston.authorize(
     'vagas.edit'::houston.app_permission,
-    vagas_hospital,    -- hospital_id
-    vagas_setor,       -- setor_id
+    hospital_id,    -- hospital_id
+    setor_id,       -- setor_id
     grupo_id           -- group_id
   )
 )
 WITH CHECK (
   houston.authorize(
     'vagas.edit'::houston.app_permission,
-    vagas_hospital,    -- hospital_id
-    vagas_setor,       -- setor_id
+    hospital_id,    -- hospital_id
+    setor_id,       -- setor_id
     grupo_id           -- group_id
   )
 );
@@ -92,8 +92,8 @@ TO authenticated
 USING (
   houston.authorize(
     'vagas.delete'::houston.app_permission,
-    vagas_hospital,    -- hospital_id
-    vagas_setor,       -- setor_id
+    hospital_id,    -- hospital_id
+    setor_id,       -- setor_id
     grupo_id           -- group_id
   )
 );
@@ -126,13 +126,13 @@ USING (
     'grupos.view'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
-    grupo_id           -- group_id
+    id           -- group_id
   )
 );
 
 -- Política de INSERT para grupo
 CREATE POLICY grupo_insert_houston_rbac
-ON public.grupo
+ON public.grupos
 FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -140,7 +140,7 @@ WITH CHECK (
     'grupos.add'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
-    grupo_id           -- group_id
+    id           -- group_id
   )
 );
 
@@ -154,7 +154,7 @@ USING (
     'grupos.edit'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
-    grupo_id           -- group_id
+    id           -- group_id
   )
 )
 WITH CHECK (
@@ -162,7 +162,7 @@ WITH CHECK (
     'grupos.edit'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
-    grupo_id           -- group_id
+    id           -- group_id
   )
 );
 
@@ -176,7 +176,7 @@ USING (
     'grupos.remove'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
-    grupo_id           -- group_id
+    id           -- group_id
   )
 );
 

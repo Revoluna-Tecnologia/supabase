@@ -22,7 +22,7 @@ SELECT
     END as group_ids,
     ARRAY[]::uuid[] as hospital_ids,
     ARRAY[]::uuid[] as setor_ids
-FROM public.escalista e
+FROM public.escalistas e
 WHERE e.escalista_status = 'ativo'
   AND NOT EXISTS (
     -- Evitar duplicatas caso a migração seja executada novamente
