@@ -108,22 +108,22 @@ USING (
 DO $$
 BEGIN
   -- Remover políticas antigas da tabela grupo
-  DROP POLICY IF EXISTS "grupo_read_all" ON public.grupo;
-  DROP POLICY IF EXISTS "grupo_insert_own" ON public.grupo;
-  DROP POLICY IF EXISTS "grupo_update_own" ON public.grupo;
-  DROP POLICY IF EXISTS "grupo_delete_own" ON public.grupo;
-  DROP POLICY IF EXISTS "Enable full acess to astronauta user" ON public.grupo;
-  DROP POLICY IF EXISTS "Enable read to medico users" ON public.grupo;
+  DROP POLICY IF EXISTS "grupo_read_all" ON public.grupos;
+  DROP POLICY IF EXISTS "grupo_insert_own" ON public.grupos;
+  DROP POLICY IF EXISTS "grupo_update_own" ON public.grupos;
+  DROP POLICY IF EXISTS "grupo_delete_own" ON public.grupos;
+  DROP POLICY IF EXISTS "Enable full acess to astronauta user" ON public.grupos;
+  DROP POLICY IF EXISTS "Enable read to medico users" ON public.grupos;
 END $$;
 
 -- Política de SELECT para grupo com verificação contextual
 CREATE POLICY grupo_select_houston_rbac
-ON public.grupo
+ON public.grupos
 FOR SELECT
 TO authenticated
 USING (
   houston.authorize(
-    'grupo.view'::houston.app_permission,
+    'grupos.view'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
     grupo_id           -- group_id
@@ -137,7 +137,7 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   houston.authorize(
-    'grupo.add'::houston.app_permission,
+    'grupos.add'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
     grupo_id           -- group_id
@@ -146,12 +146,12 @@ WITH CHECK (
 
 -- Política de UPDATE para grupo
 CREATE POLICY grupo_update_houston_rbac
-ON public.grupo
+ON public.grupos
 FOR UPDATE
 TO authenticated
 USING (
   houston.authorize(
-    'grupo.edit'::houston.app_permission,
+    'grupos.edit'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
     grupo_id           -- group_id
@@ -159,7 +159,7 @@ USING (
 )
 WITH CHECK (
   houston.authorize(
-    'grupo.edit'::houston.app_permission,
+    'grupos.edit'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
     grupo_id           -- group_id
@@ -168,12 +168,12 @@ WITH CHECK (
 
 -- Política de DELETE para grupo
 CREATE POLICY grupo_delete_houston_rbac
-ON public.grupo
+ON public.grupos
 FOR DELETE
 TO authenticated
 USING (
   houston.authorize(
-    'grupo.remove'::houston.app_permission,
+    'grupos.remove'::houston.app_permission,
     NULL::uuid,        -- hospital_id (não aplicável para grupo)
     NULL::uuid,        -- setor_id (não aplicável para grupo)
     grupo_id           -- group_id
@@ -190,18 +190,18 @@ USING (
 DO $$
 BEGIN
   -- Remover políticas antigas da tabela escalista
-  DROP POLICY IF EXISTS "escalista_read_all" ON public.escalista;
-  DROP POLICY IF EXISTS "escalista_insert_own" ON public.escalista;
-  DROP POLICY IF EXISTS "escalista_update_own" ON public.escalista;
-  DROP POLICY IF EXISTS "escalista_delete_own" ON public.escalista;
-  DROP POLICY IF EXISTS "Enable full access to astronauta user" ON public.escalista;
-  DROP POLICY IF EXISTS "Enable read access for all authenticated users" ON public.escalista;
-  DROP POLICY IF EXISTS "escalista_policy" ON public.escalista;
+  DROP POLICY IF EXISTS "escalista_read_all" ON public.escalistas;
+  DROP POLICY IF EXISTS "escalista_insert_own" ON public.escalistas;
+  DROP POLICY IF EXISTS "escalista_update_own" ON public.escalistas;
+  DROP POLICY IF EXISTS "escalista_delete_own" ON public.escalistas;
+  DROP POLICY IF EXISTS "Enable full access to astronauta user" ON public.escalistas;
+  DROP POLICY IF EXISTS "Enable read access for all authenticated users" ON public.escalistas;
+  DROP POLICY IF EXISTS "escalista_policy" ON public.escalistas;
 END $$;
 
 -- Política de SELECT para escalista com verificação contextual
 CREATE POLICY escalista_select_houston_rbac
-ON public.escalista
+ON public.escalistas
 FOR SELECT
 TO authenticated
 USING (
@@ -215,7 +215,7 @@ USING (
 
 -- Política de INSERT para escalista
 CREATE POLICY escalista_insert_houston_rbac
-ON public.escalista
+ON public.escalistas
 FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -229,7 +229,7 @@ WITH CHECK (
 
 -- Política de UPDATE para escalista
 CREATE POLICY escalista_update_houston_rbac
-ON public.escalista
+ON public.escalistas
 FOR UPDATE
 TO authenticated
 USING (
@@ -251,7 +251,7 @@ WITH CHECK (
 
 -- Política de DELETE para escalista
 CREATE POLICY escalista_delete_houston_rbac
-ON public.escalista
+ON public.escalistas
 FOR DELETE
 TO authenticated
 USING (
@@ -281,29 +281,29 @@ COMMENT ON POLICY vagas_delete_houston_rbac ON public.vagas
 IS 'Política de DELETE para vagas usando houston.authorize com verificação contextual completa (hospital, setor, grupo)';
 
 -- Comentários sobre as políticas de grupo
-COMMENT ON POLICY grupo_select_houston_rbac ON public.grupo 
+COMMENT ON POLICY grupo_select_houston_rbac ON public.grupos 
 IS 'Política de SELECT para grupo usando houston.authorize com verificação de contexto grupo específico';
 
-COMMENT ON POLICY grupo_insert_houston_rbac ON public.grupo 
+COMMENT ON POLICY grupo_insert_houston_rbac ON public.grupos 
 IS 'Política de INSERT para grupo usando houston.authorize com verificação de contexto grupo específico';
 
-COMMENT ON POLICY grupo_update_houston_rbac ON public.grupo 
+COMMENT ON POLICY grupo_update_houston_rbac ON public.grupos 
 IS 'Política de UPDATE para grupo usando houston.authorize com verificação de contexto grupo específico';
 
-COMMENT ON POLICY grupo_delete_houston_rbac ON public.grupo 
+COMMENT ON POLICY grupo_delete_houston_rbac ON public.grupos
 IS 'Política de DELETE para grupo usando houston.authorize com verificação de contexto grupo específico';
 
 -- Comentários sobre as políticas de escalista
-COMMENT ON POLICY escalista_select_houston_rbac ON public.escalista 
+COMMENT ON POLICY escalista_select_houston_rbac ON public.escalistas 
 IS 'Política de SELECT para escalista usando houston.authorize com verificação de contexto grupo (permissões de membros)';
 
-COMMENT ON POLICY escalista_insert_houston_rbac ON public.escalista 
+COMMENT ON POLICY escalista_insert_houston_rbac ON public.escalistas 
 IS 'Política de INSERT para escalista usando houston.authorize com verificação de contexto grupo (permissões de membros)';
 
-COMMENT ON POLICY escalista_update_houston_rbac ON public.escalista 
+COMMENT ON POLICY escalista_update_houston_rbac ON public.escalistas 
 IS 'Política de UPDATE para escalista usando houston.authorize com verificação de contexto grupo (permissões de membros)';
 
-COMMENT ON POLICY escalista_delete_houston_rbac ON public.escalista 
+COMMENT ON POLICY escalista_delete_houston_rbac ON public.escalistas 
 IS 'Política de DELETE para escalista usando houston.authorize com verificação de contexto grupo (permissões de membros)';
 
 -- =============================================================================
