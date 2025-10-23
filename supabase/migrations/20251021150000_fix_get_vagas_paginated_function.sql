@@ -47,7 +47,7 @@ CREATE OR REPLACE FUNCTION get_vagas_paginated(
     order_by text DEFAULT 'vagas_data',
     -- Valores: 'vagas_createdate', 'vagas_data', 'vagas_valor', 'hospital_nome', 'setor_nome', 'especialidade_nome', 'vagas_periodo_nome', 'vagas_status', 'total_candidaturas'
     order_direction text DEFAULT 'DESC' -- Valores: 'ASC', 'DESC'
-  ) RETURNS TABLE(data jsonb, pagination jsonb) LANGUAGE plpgsql SECURITY DEFINER
+  ) RETURNS TABLE(data jsonb, pagination jsonb) LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = public AS $$
 DECLARE validated_page integer;
 validated_size integer;
