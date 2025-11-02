@@ -108,6 +108,8 @@ $function$
 
 -- criar_escalista_from_auth >> create_user_from_auth
 
+DROP TRIGGER IF EXISTS auth_users_criar_escalista_trigger ON auth.users;
+
 DROP FUNCTION IF EXISTS public.criar_escalista_from_auth();
 
 CREATE OR REPLACE FUNCTION public.create_user_from_auth()
@@ -256,8 +258,6 @@ END;
 $$;
 
 -- drop trigger e recriar
-
-DROP TRIGGER IF EXISTS auth_users_criar_escalista_trigger ON auth.users;
 
 CREATE TRIGGER users_1_criar_usuario AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION create_user_from_auth;
 
