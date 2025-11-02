@@ -1,5 +1,6 @@
 -- medicos
 DROP POLICY IF EXISTS "medicos_update_rbac" ON "public"."medicos";
+DROP POLICY IF EXISTS "medicos_update_policy" ON "public"."medicos";
 CREATE POLICY "medicos_update_policy"
 ON "public"."medicos"
 AS PERMISSIVE
@@ -17,6 +18,7 @@ TO authenticated
   );
 
 DROP POLICY IF EXISTS "medicos_select_rbac" ON "public"."medicos";
+DROP POLICY IF EXISTS "medicos_select_policy" ON "public"."medicos";
 CREATE POLICY "medicos_select_policy"
 on "public"."medicos"
 as permissive
@@ -30,6 +32,7 @@ to authenticated
 
 
 DROP POLICY IF EXISTS "medicos_insert_rbac" ON "public"."medicos";
+DROP POLICY IF EXISTS "medicos_insert_policy" ON "public"."medicos";
 create policy "medicos_insert_policy"
 on "public"."medicos"
 as permissive
@@ -42,6 +45,7 @@ with check ( -- Usuários na user_profile podem inserir somente com seu próprio
   );
 
 DROP POLICY IF EXISTS "medicos_delete_rbac" ON "public"."medicos";
+DROP POLICY IF EXISTS "medicos_delete_policy" ON "public"."medicos";
 create policy "medicos_delete_policy"
 on "public"."medicos"
 as permissive
@@ -57,6 +61,7 @@ to authenticated
 -- escalistas
 
 drop policy if exists "escalista_select_houston_rbac" on "public"."escalistas";
+drop policy if exists "escalista_select_policy" on "public"."escalistas";
 create policy "escalistas_select_policy"
 on "public"."escalistas"
 as permissive
@@ -70,6 +75,7 @@ using (
 );
 
 drop policy if exists "escalista_update_houston_rbac" on "public"."escalistas";
+drop policy if exists "escalista_update_policy" on "public"."escalistas";
 create policy "escalistas_update_policy"
 on "public"."escalistas"
 as permissive
@@ -82,6 +88,7 @@ using (
 );
 
 drop policy if exists "escalista_insert_houston_rbac" on "public"."escalistas";
+drop policy if exists "escalista_insert_policy" on "public"."escalistas";
 create policy "escalistas_insert_policy"
 on "public"."escalistas"
 as permissive
@@ -92,6 +99,7 @@ with check (
 );
 
 drop policy if exists "escalista_delete_houston_rbac" on "public"."escalistas";
+drop policy if exists "escalista_delete_policy" on "public"."escalistas";
 create policy "escalistas_delete_policy"
 on "public"."escalistas"
 as permissive
@@ -104,6 +112,7 @@ using (
 -- grupos
 
 drop policy if exists "grupo_delete_houston_rbac" on "public"."grupos";
+drop policy if exists "grupo_delete_policy" on "public"."grupos";
 create policy "grupos_delete_policy"
 on "public"."grupos"
 as permissive
@@ -116,6 +125,7 @@ using (
 
 
 drop policy if exists "grupo_insert_houston_rbac" on "public"."grupos";
+drop policy if exists "grupo_insert_policy" on "public"."grupos";
 create policy "grupos_insert_policy"
 on "public"."grupos"
 as permissive
@@ -126,6 +136,7 @@ with check (
 );
 
 drop policy if exists "grupo_select_houston_rbac" on "public"."grupos";
+drop policy if exists "grupo_select_policy" on "public"."grupos";
 create policy "grupos_select_policy"
 on "public"."grupos"
 as permissive
@@ -139,6 +150,7 @@ using (
      );
 
 drop policy if exists "grupo_update_houston_rbac" on "public"."grupos";
+drop policy if exists "grupo_update_policy" on "public"."grupos";
 create policy "grupos_update_policy"
 on "public"."grupos"
 as permissive
@@ -153,6 +165,7 @@ using (
 -- medicos_precadastro
 
 drop policy if exists "medicos_precadastro_update_rbac" on "public"."medicos_precadastro";
+drop policy if exists "medicos_precadastro_update_policy" on "public"."medicos_precadastro";
 create policy "medicos_precadastro_update_policy"
 on "public"."medicos_precadastro"
 as permissive
@@ -178,6 +191,7 @@ using (
 );
 
 drop policy if exists "medicos_precadastro_insert_rbac" on "public"."medicos_precadastro";
+drop policy if exists "medicos_precadastro_insert_policy" on "public"."medicos_precadastro";
 create policy "medicos_precadastro_insert_policy"
 on "public"."medicos_precadastro"
 as permissive
@@ -188,6 +202,7 @@ with check (
 );
 
 drop policy if exists "medicos_precadastro_delete_rbac" on "public"."medicos_precadastro";
+drop policy if exists "medicos_precadastro_delete_policy" on "public"."medicos_precadastro";
 create policy "medicos_precadastro_delete_policy"
 on "public"."medicos_precadastro"
 as permissive
@@ -200,6 +215,7 @@ using (
 -- vagas
 
 drop policy if exists "vagas_delete_houston_rbac" on "public"."vagas";
+drop policy if exists "vagas_delete_policy" on "public"."vagas";
 create policy "vagas_delete_policy"
 on "public"."vagas"
 as permissive
@@ -210,6 +226,7 @@ using (
 );
 
 drop policy if exists "vagas_insert_houston_rbac" on "public"."vagas";
+drop policy if exists "vagas_insert_policy" on "public"."vagas";
 create policy "vagas_insert_policy"
 on "public"."vagas"
 as permissive
@@ -221,6 +238,7 @@ with check (
 
 
 drop policy if exists "vagas_select_houston_rbac" on "public"."vagas";
+drop policy if exists "vagas_select_policy" on "public"."vagas";
 create policy "vagas_select_policy"
 on "public"."vagas"
 as permissive
@@ -233,6 +251,7 @@ using (
 );
 
 drop policy if exists "vagas_update_houston_rbac" on "public"."vagas";
+drop policy if exists "vagas_update_policy" on "public"."vagas";
 create policy "vagas_update_policy"
 on "public"."vagas"
 as permissive
