@@ -61,7 +61,7 @@ to authenticated
 -- escalistas
 
 drop policy if exists "escalista_select_houston_rbac" on "public"."escalistas";
-drop policy if exists "escalista_select_policy" on "public"."escalistas";
+drop policy if exists "escalistas_select_policy" on "public"."escalistas";
 create policy "escalistas_select_policy"
 on "public"."escalistas"
 as permissive
@@ -75,7 +75,7 @@ using (
 );
 
 drop policy if exists "escalista_update_houston_rbac" on "public"."escalistas";
-drop policy if exists "escalista_update_policy" on "public"."escalistas";
+drop policy if exists "escalistas_update_policy" on "public"."escalistas";
 create policy "escalistas_update_policy"
 on "public"."escalistas"
 as permissive
@@ -88,7 +88,7 @@ using (
 );
 
 drop policy if exists "escalista_insert_houston_rbac" on "public"."escalistas";
-drop policy if exists "escalista_insert_policy" on "public"."escalistas";
+drop policy if exists "escalistas_insert_policy" on "public"."escalistas";
 create policy "escalistas_insert_policy"
 on "public"."escalistas"
 as permissive
@@ -99,7 +99,7 @@ with check (
 );
 
 drop policy if exists "escalista_delete_houston_rbac" on "public"."escalistas";
-drop policy if exists "escalista_delete_policy" on "public"."escalistas";
+drop policy if exists "escalistas_delete_policy" on "public"."escalistas";
 create policy "escalistas_delete_policy"
 on "public"."escalistas"
 as permissive
@@ -112,7 +112,7 @@ using (
 -- grupos
 
 drop policy if exists "grupo_delete_houston_rbac" on "public"."grupos";
-drop policy if exists "grupo_delete_policy" on "public"."grupos";
+drop policy if exists "grupos_delete_policy" on "public"."grupos";
 create policy "grupos_delete_policy"
 on "public"."grupos"
 as permissive
@@ -125,7 +125,7 @@ using (
 
 
 drop policy if exists "grupo_insert_houston_rbac" on "public"."grupos";
-drop policy if exists "grupo_insert_policy" on "public"."grupos";
+drop policy if exists "grupos_insert_policy" on "public"."grupos";
 create policy "grupos_insert_policy"
 on "public"."grupos"
 as permissive
@@ -136,7 +136,7 @@ with check (
 );
 
 drop policy if exists "grupo_select_houston_rbac" on "public"."grupos";
-drop policy if exists "grupo_select_policy" on "public"."grupos";
+drop policy if exists "grupos_select_policy" on "public"."grupos";
 create policy "grupos_select_policy"
 on "public"."grupos"
 as permissive
@@ -150,7 +150,7 @@ using (
      );
 
 drop policy if exists "grupo_update_houston_rbac" on "public"."grupos";
-drop policy if exists "grupo_update_policy" on "public"."grupos";
+drop policy if exists "grupos_update_policy" on "public"."grupos";
 create policy "grupos_update_policy"
 on "public"."grupos"
 as permissive
@@ -178,6 +178,7 @@ using (
 );
 
 drop policy if exists "medicos_precadastro_select_rbac" on "public"."medicos_precadastro";
+drop policy if exists "medicos_precadastro_select_policy" on "public"."medicos_precadastro";
 create policy "medicos_precadastro_select_policy"
 on "public"."medicos_precadastro"
 as permissive
