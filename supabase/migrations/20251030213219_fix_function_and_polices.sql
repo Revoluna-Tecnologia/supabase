@@ -259,12 +259,11 @@ $$;
 
 -- drop trigger e recriar
 
-CREATE TRIGGER users_1_criar_usuario AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION create_user_from_auth;
+CREATE TRIGGER users_1_criar_usuario AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION create_user_from_auth();
 
 DROP TRIGGER IF EXISTS activate_escalista_on_email_confirmation ON auth.users;
 
-CREATE TRIGGER users_2_ativar_escalista AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION activate_escalista_on_confirmation;
-
+CREATE TRIGGER users_2_ativar_escalista AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION activate_escalista_on_confirmation();
 
 -- cleanup_medicos_precadastro
 CREATE OR REPLACE FUNCTION cleanup_medicos_precadastro ()
