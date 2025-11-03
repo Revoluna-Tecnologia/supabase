@@ -68,7 +68,7 @@ BEGIN
     
     RETURN FALSE;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.atualizar_candidaturas_vaga_cancelada()
@@ -92,7 +92,7 @@ BEGIN
     
     RETURN NEW;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.pode_ver_candidatura_colega(candidatura_id uuid)
@@ -162,7 +162,7 @@ EXCEPTION
     WHEN OTHERS THEN
         RETURN FALSE;
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.pode_ver_candidatura_colega_debug(candidatura_id uuid)
  RETURNS text
@@ -230,7 +230,7 @@ AS $function$
       WHEN OTHERS THEN
           RETURN 'ERROR: ' || SQLERRM;
   END;
-  $function$
+  $function$;
 
 
 CREATE OR REPLACE FUNCTION public.validate_checkin_timing()
@@ -322,7 +322,7 @@ BEGIN
         RETURN NEW;
     END IF;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.excluir_vagas_lote(vagas_ids uuid[])
@@ -442,7 +442,7 @@ BEGIN
         RETURN NEW;
     END IF;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.aprovacao_automatica_favoritos()
@@ -483,6 +483,6 @@ BEGIN
     
     RETURN NEW;
 END;
-$function$
+$function$;
 
 
