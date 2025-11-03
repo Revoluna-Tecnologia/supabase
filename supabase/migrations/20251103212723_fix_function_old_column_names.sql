@@ -350,7 +350,7 @@ EXCEPTION
         -- Em caso de erro, re-lançar com mensagem mais clara
         RAISE EXCEPTION 'Erro ao excluir vagas: %', SQLERRM;
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.validate_checkout_timing()
