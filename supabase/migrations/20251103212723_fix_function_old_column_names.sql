@@ -3,20 +3,20 @@
 -- Esta migration corrige as referências a nomes de colunas antigos nas funções do sistema
 --
 -- Funções corrigidas:
--- - check_candidatura_access
--- - atualizar_candidaturas_vaga_cancelada  
--- - pode_ver_candidatura_colega
--- - pode_ver_candidatura_colega_debug
--- - validate_checkin_timing
--- - excluir_vagas_lote
--- - validate_checkout_timing
--- - aprovacao_automatica_favoritos
+-- check_candidatura_access
+-- atualizar_candidaturas_vaga_cancelada  
+-- pode_ver_candidatura_colega
+-- pode_ver_candidatura_colega_debug
+-- validate_checkin_timing
+-- excluir_vagas_lote
+-- validate_checkout_timing
+-- aprovacao_automatica_favoritos
 
 CREATE OR REPLACE FUNCTION public.check_candidatura_access(candidatura_id uuid, vaga_id uuid, medico_id uuid DEFAULT NULL::uuid, medico_precadastro_id uuid DEFAULT NULL::uuid)
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE
- SET search_path TO ''
+ SET search_path TO 'public'
 AS $function$
 DECLARE
     current_user_id UUID := auth.uid();
@@ -338,8 +338,8 @@ BEGIN
     END IF;
 
     -- Excluir as vagas e contar quantas foram excluídas
-    DELETE FROM public.vagas  -- ✅ Adicionado schema
-    WHERE id = ANY(vagas_ids);  -- ✅ Corrigido: vagas_id → id
+    DELETE FROM public.vagas  -- Adicionado schema
+    WHERE id = ANY(vagas_ids);  -- Corrigido: vagas_id → id
 
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
 
@@ -385,7 +385,7 @@ BEGIN
     -- Buscar informações da vaga
     SELECT v.data, v.hora_inicio, v.hora_fim
     INTO vaga_date, vaga_start_time, vaga_end_time
-    FROM public.vagas v  -- ✅ Adicionado schema
+    FROM public.vagas v  -- Adicionado schema
     WHERE v.id = NEW.vaga_id;
 
     IF NOT FOUND THEN
@@ -395,8 +395,8 @@ BEGIN
     -- Verificar se o médico tem candidatura aprovada para esta vaga
     SELECT EXISTS(
         SELECT 1 
-        FROM public.candidaturas c  -- ✅ Adicionado schema
-        WHERE c.vaga_id = NEW.vaga_id  -- ✅ Corrigido: vagas_id → vaga_id
+        FROM public.candidaturas c  -- Adicionado schema
+        WHERE c.vaga_id = NEW.vaga_id  -- Corrigido: vagas_id → vaga_id
         AND c.medico_id = NEW.medico_id 
         AND c.status = 'APROVADO'
     ) INTO candidatura_aprovada;
@@ -408,7 +408,7 @@ BEGIN
     -- Verificar se existe check-in para esta combinação médico/vaga
     IF NOT EXISTS(
         SELECT 1 
-        FROM public.checkin_checkout cc  -- ✅ Adicionado schema
+        FROM public.checkin_checkout cc  -- Adicionado schema
         WHERE cc.vaga_id = NEW.vaga_id 
         AND cc.medico_id = NEW.medico_id
     ) THEN
@@ -430,7 +430,7 @@ BEGIN
         RETURN NEW;
     ELSE
         -- Fora da janela: exigir justificativa
-        IF NEW.checkout_justificativa IS NULL OR TRIM(NEW.checkout_justificativa) = '' THEN  -- ✅ Corrigido: checkin_justificativa → checkout_justificativa
+        IF NEW.checkout_justificativa IS NULL OR TRIM(NEW.checkout_justificativa) = '' THEN  -- Corrigido: checkin_justificativa → checkout_justificativa
             RAISE EXCEPTION 'ERRO Horário requer justificativa obrigatória.';
         END IF;
         
@@ -453,8 +453,8 @@ BEGIN
     -- Verifica se existe uma relação de favorito entre o médico e o grupo da vaga
     IF EXISTS (
         SELECT 1 
-        FROM public.medicos_favoritos mf  -- ✅ Adicionado schema
-        INNER JOIN public.vagas v ON v.id = NEW.vaga_id  -- ✅ Corrigido: vagas_id → vaga_id, adicionado schema
+        FROM public.medicos_favoritos mf  -- Adicionado schema
+        INNER JOIN public.vagas v ON v.id = NEW.vaga_id  -- Corrigido: vagas_id → vaga_id, adicionado schema
         WHERE mf.medico_id = NEW.medico_id 
         AND mf.grupo_id = v.grupo_id
     ) THEN
@@ -465,18 +465,18 @@ BEGIN
         NEW.updated_by := auth.uid();
         
         -- Fechar a vaga
-        UPDATE public.vagas  -- ✅ Adicionado schema
+        UPDATE public.vagas  -- Adicionado schema
         SET status = 'fechada',
             updated_at = NOW(),
             updated_by = auth.uid()
-        WHERE id = NEW.vaga_id;  -- ✅ Corrigido: vagas_id → vaga_id
+        WHERE id = NEW.vaga_id;  -- Corrigido: vagas_id → vaga_id
         
         -- Reprovar outras candidaturas pendentes
-        UPDATE public.candidaturas  -- ✅ Adicionado schema
+        UPDATE public.candidaturas  -- Adicionado schema
         SET status = 'REPROVADO',
             updated_at = NOW(),
             updated_by = auth.uid()
-        WHERE vaga_id = NEW.vaga_id  -- ✅ Corrigido: vagas_id → vaga_id
+        WHERE vaga_id = NEW.vaga_id  -- Corrigido: vagas_id → vaga_id
         AND id != NEW.id;
         
     END IF;
