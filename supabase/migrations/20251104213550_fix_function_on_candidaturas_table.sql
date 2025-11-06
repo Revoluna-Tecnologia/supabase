@@ -205,8 +205,3 @@ USING (
             "houston"."authorize_simple"('candidaturas.delete'::"houston"."app_permission")
     END
 );
-
-
--- remover user_profile não free
-
--- DELETE FROM "public"."user_profile" WHERE "role" IS NULL OR "role" != 'free';
