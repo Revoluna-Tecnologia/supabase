@@ -2,7 +2,9 @@
 -- but only for vagas with status 'aberta' and without candidaturas data
 
 -- Create view for open vagas
-create or replace view public.vw_vagas_abertas as
+create or replace view public.vw_vagas_abertas 
+with (security_invoker = on)
+as
 SELECT
     row_number() OVER (ORDER BY v.id) AS idx,
     v.id AS vaga_id,
