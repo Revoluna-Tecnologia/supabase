@@ -7179,10 +7179,10 @@ INSERT INTO "public"."vagas_salvas" ("id", "created_at", "vaga_id", "medico_id")
 
 
 --
--- Data for Name: whatsappnumber; Type: TABLE DATA; Schema: public; Owner: postgres
+-- Data for Name: whatsapp_number; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO "public"."whatsappnumber" ("updated_at", "number") VALUES
+INSERT INTO "public"."whatsapp_number" ("updated_at", "number") VALUES
 	('2025-04-25 15:08:04-03', '5511978910485');
 
 

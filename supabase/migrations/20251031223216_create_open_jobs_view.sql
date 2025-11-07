@@ -4,49 +4,49 @@
 -- Create view for open vagas
 create or replace view public.vw_vagas_abertas as
 SELECT
-    row_number() OVER (ORDER BY v.vagas_id) AS idx,
-    v.vagas_id,
-    v.vagas_data,
-    v.vagas_createdate,
-    v.vagas_status,
-    v.vagas_valor,
-    v.vagas_horainicio,
-    v.vagas_horafim,
-    v.vagas_datapagamento,
-    v.vagas_periodo,
-    p.periodo AS vagas_periodo_nome,
-    v.vagas_tipo,
-    t.tipo AS vagas_tipo_nome,
-    v.vagas_formarecebimento,
-    f.forma_recebimento AS vagas_formarecebimento_nome,
-    v.vagas_observacoes,
-    h.hospital_id,
-    h.hospital_nome,
-    h.hospital_estado,
+    row_number() OVER (ORDER BY v.id) AS idx,
+    v.id AS vaga_id,
+    v.data AS vaga_data,
+    v.created_at AS vaga_createdate,
+    v.status AS vaga_status,
+    v.valor AS vaga_valor,
+    v.hora_inicio AS vaga_horainicio,
+    v.hora_fim AS vaga_horafim,
+    v.data_pagamento AS vaga_datapagamento,
+    v.periodo_id AS vaga_periodo,
+    p.nome AS vaga_periodo_nome,
+    v.tipos_vaga_id AS vaga_tipo,
+    t.nome AS vaga_tipo_nome,
+    v.forma_recebimento_id AS vaga_formarecebimento,
+    f.forma_recebimento AS vaga_formarecebimento_nome,
+    v.observacoes AS vaga_observacoes,
+    h.id AS hospital_id,
+    h.nome AS hospital_nome,
+    h.estado AS hospital_estado,
     h.latitude AS hospital_lat,
     h.longitude AS hospital_log,
     h.endereco_formatado AS hospital_end,
-    h.hospital_avatar,
-    e.especialidade_id,
-    e.especialidade_nome,
-    s.setor_id,
-    s.setor_nome,
-    esc.escalista_id,
-    esc.escalista_nome,
-    esc.escalista_email,
-    esc.escalista_telefone,
-    g.grupo_id,
-    g.grupo_nome
+    h.avatar AS hospital_avatar,
+    e.id AS especialidade_id,
+    e.nome AS especialidade_nome,
+    s.id AS setor_id,
+    s.nome AS setor_nome,
+    esc.id AS escalista_id,
+    esc.nome AS escalista_nome,
+    esc.email AS escalista_email,
+    esc.telefone AS escalista_telefone,
+    g.id AS grupo_id,
+    g.nome AS grupo_nome
 FROM vagas v
-    JOIN hospital h ON v.vagas_hospital = h.hospital_id
-    JOIN especialidades e ON v.vaga_especialidade = e.especialidade_id
-    JOIN setores s ON v.vagas_setor = s.setor_id
-    LEFT JOIN escalista esc ON v.vagas_escalista = esc.escalista_id
-    LEFT JOIN grupo g ON v.grupo_id = g.grupo_id
-    LEFT JOIN periodo p ON v.vagas_periodo = p.periodo_id
-    LEFT JOIN tipovaga t ON v.vagas_tipo = t.id
-    LEFT JOIN formas_recebimento f ON v.vagas_formarecebimento = f.id
-WHERE v.vagas_status = 'aberta';
+    JOIN hospitais h ON v.hospital_id = h.id
+    JOIN especialidades e ON v.especialidade_id = e.id
+    JOIN setores s ON v.setor_id = s.id
+    LEFT JOIN escalistas esc ON v.escalista_id = esc.id
+    LEFT JOIN grupos g ON v.grupo_id = g.id
+    LEFT JOIN periodos p ON v.periodo_id = p.id
+    LEFT JOIN tipos_vaga t ON v.tipos_vaga_id = t.id
+    LEFT JOIN formas_recebimento f ON v.forma_recebimento_id = f.id
+WHERE v.status = 'aberta';
 
 -- Grant access to anon role
 grant select on public.vw_vagas_abertas to anon;
