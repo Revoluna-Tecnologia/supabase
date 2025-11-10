@@ -9,7 +9,7 @@ ALTER TYPE houston.app_permission RENAME VALUE 'roles.view' TO 'roles.select';
 
 -- vagas
 ALTER TYPE houston.app_permission RENAME VALUE 'vagas.edit' TO 'vagas.update';
-ALTER TYPE houston.app_permission RENAME VALUE 'vagas.remove' TO 'vagas.delete';
+-- ALTER TYPE houston.app_permission RENAME VALUE 'vagas.delete' TO 'vagas.delete';
 ALTER TYPE houston.app_permission RENAME VALUE 'vagas.create' TO 'vagas.insert';
 ALTER TYPE houston.app_permission RENAME VALUE 'vagas.view' TO 'vagas.select';
 

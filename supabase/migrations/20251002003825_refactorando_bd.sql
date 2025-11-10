@@ -616,6 +616,7 @@ ALTER TABLE public.vagas RENAME column "Index" TO "index";
 -- 1.5. Remover views que dependem das colunas da tabela vagas antes de alterar os tipos
 DROP VIEW IF EXISTS "public"."vw_vagas_candidaturas" CASCADE;
 DROP VIEW IF EXISTS "public"."vagas_completo" CASCADE;
+DROP VIEW IF EXISTS "public"."vw_vagas_abertas" CASCADE;
 
 -- 2. Alterar tipos de colunas para timestamptz (mantendo valores existentes)
 ALTER TABLE public.vagas alter column created_at type timestamptz using created_at at time zone 'America/Sao_Paulo';
