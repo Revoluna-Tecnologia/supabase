@@ -7996,7 +7996,7 @@ INSERT INTO "storage"."prefixes" ("bucket_id", "name", "created_at", "updated_at
 	('carteira-digital', 'c7615cfc-c77a-42b9-924e-ce492b3610a6/fotos', '2025-09-24 16:17:34.186706-03', '2025-09-24 16:17:34.186706-03'),
 	('carteira-digital', 'c7615cfc-c77a-42b9-924e-ce492b3610a6/diploma', '2025-09-24 16:17:43.188918-03', '2025-09-24 16:17:43.188918-03'),
 	('carteira-digital', 'c7615cfc-c77a-42b9-924e-ce492b3610a6/comprovante_residencia', '2025-09-24 16:17:58.828046-03', '2025-09-24 16:17:58.828046-03'),
-	('carteira-digital', 'c7615cfc-c77a-42b9-924e-ce492b3610a6/certidoes', '2025-09-24 16:18:07.647347-03', '2025-09-24 16:18:07.647347-03');
+	('carteira-digital', 'c7615cfc-c77a-42b9-924e-ce492b3610a6/certidoes', '2025-09-24 16:18:07.647347-03', '2025-09-24 16:18:07.647347-03') ON CONFLICT (id) DO NOTHING;
 
 
 --
