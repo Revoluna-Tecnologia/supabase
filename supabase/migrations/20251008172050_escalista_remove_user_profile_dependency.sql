@@ -45,9 +45,10 @@ ADD COLUMN id_temp uuid;
 DELETE FROM public.escalistas 
 WHERE ctid NOT IN (
     SELECT min(ctid) 
-    FROM public.escalistas 
+    FROM public.escalistas
     GROUP BY auth_id
-);
+)
+AND nome != 'Não informado';
 
 UPDATE public.escalistas
 SET id_temp = auth_id;
