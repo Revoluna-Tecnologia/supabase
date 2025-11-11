@@ -20,8 +20,8 @@ DROP POLICY IF EXISTS vagas_recorrencia_escalista_policy ON public.vagas_recorre
 ALTER TABLE public.medicos_favoritos 
 DROP CONSTRAINT IF EXISTS fk_medicos_favoritos_escalista;
 
--- ALTER TABLE public.vagas 
--- DROP CONSTRAINT IF EXISTS vagas_vagas_escalista_fkey;
+ALTER TABLE public.vagas 
+DROP CONSTRAINT IF EXISTS vagas_vagas_escalista_fkey;
 
 -- 4. Remover constraints da tabela escalista
 ALTER TABLE public.escalistas
@@ -30,8 +30,8 @@ DROP CONSTRAINT IF EXISTS escalista_escalista_auth_id_fkey;
 ALTER TABLE public.escalistas 
 DROP CONSTRAINT IF EXISTS escalista_pkey;
 
---ALTER TABLE public.escalistas 
---DROP CONSTRAINT IF EXISTS "escalista_id-de-escalista_key";
+ALTER TABLE public.escalistas 
+DROP CONSTRAINT IF EXISTS "escalista_id-de-escalista_key";
 
 -- 5. Remover índices relacionados
 DROP INDEX IF EXISTS idx_escalista_nome;
@@ -128,10 +128,10 @@ CREATE INDEX idx_escalista_id ON public.escalistas USING btree (id);
 -- );
 
 -- Recriar constraint para vagas
--- ALTER TABLE public.vagas
---    ADD CONSTRAINT vagas_vagas_escalista_fkey 
---    FOREIGN KEY (escalista_id) REFERENCES escalistas (id) 
---    ON UPDATE CASCADE ON DELETE SET DEFAULT;
+ALTER TABLE public.vagas
+   ADD CONSTRAINT vagas_vagas_escalista_fkey 
+   FOREIGN KEY (escalista_id) REFERENCES escalistas (id) 
+   ON UPDATE CASCADE ON DELETE SET DEFAULT;
 
 -- 13. Atualizar função get_current_user_grupo_id para usar nova estrutura
 CREATE OR REPLACE FUNCTION public.get_current_user_grupo_id()
