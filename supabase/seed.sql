@@ -7196,7 +7196,7 @@ INSERT INTO "storage"."buckets" ("id", "name", "owner", "created_at", "updated_a
 	('carteira-digital', 'carteira-digital', NULL, '2025-05-16 11:07:33.76612-03', '2025-05-16 11:07:33.76612-03', false, false, NULL, NULL, NULL, 'STANDARD'),
 	('documentos_medicos', 'documentos_medicos', NULL, '2025-03-15 12:12:48.692955-03', '2025-03-15 12:12:48.692955-03', false, false, NULL, NULL, NULL, 'STANDARD'),
 	('profilepictures', 'profilepictures', NULL, '2025-04-01 14:27:48.709289-03', '2025-04-01 14:27:48.709289-03', true, false, NULL, NULL, NULL, 'STANDARD'),
-	('avatarhospitais', 'avatarhospitais', NULL, '2025-04-24 10:06:38.229941-03', '2025-04-24 10:06:38.229941-03', true, false, NULL, NULL, NULL, 'STANDARD');
+	('avatarhospitais', 'avatarhospitais', NULL, '2025-04-24 10:06:38.229941-03', '2025-04-24 10:06:38.229941-03', true, false, NULL, NULL, NULL, 'STANDARD') ON CONFLICT (id) DO NOTHING;
 
 
 --
