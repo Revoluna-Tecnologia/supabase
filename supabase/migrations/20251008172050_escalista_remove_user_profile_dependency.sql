@@ -30,8 +30,8 @@ DROP CONSTRAINT IF EXISTS escalista_escalista_auth_id_fkey;
 ALTER TABLE public.escalistas 
 DROP CONSTRAINT IF EXISTS escalista_pkey;
 
-ALTER TABLE public.escalistas 
-DROP CONSTRAINT IF EXISTS "escalista_id-de-escalista_key";
+--ALTER TABLE public.escalistas 
+--DROP CONSTRAINT IF EXISTS "escalista_id-de-escalista_key";
 
 -- 5. Remover índices relacionados
 DROP INDEX IF EXISTS idx_escalista_nome;
