@@ -103,9 +103,9 @@ CREATE INDEX idx_escalista_id ON public.escalistas USING btree (id);
 -- );
 
 -- Recriar constraint para medicos_favoritos
--- ALTER TABLE public.medicos_favoritos 
--- ADD CONSTRAINT fk_medicos_favoritos_escalista 
--- FOREIGN KEY (escalista_id) REFERENCES public.escalistas(id) ON DELETE CASCADE;
+ALTER TABLE public.medicos_favoritos 
+ADD CONSTRAINT fk_medicos_favoritos_escalista 
+FOREIGN KEY (escalista_id) REFERENCES public.escalistas(id) ON DELETE CASCADE;
 
 -- 12. Atualizar vagas que referenciam escalista
 -- ALTER TABLE public.vagas 
