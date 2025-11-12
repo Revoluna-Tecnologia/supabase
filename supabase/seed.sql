@@ -55,11 +55,7 @@ INSERT INTO "houston"."role_permissions" ("role", "permission") VALUES
 	('escalista', 'vagas.update'),
 	('escalista', 'medicos.select'),
 	('escalista', 'candidaturas.select'),
-	('escalista', 'candidaturas.update'),
-	('medico', 'vagas.select'),
-	('medico', 'candidaturas.select'),
-	('medico', 'candidaturas.insert'),
-	('medico', 'candidaturas.update')
+	('escalista', 'candidaturas.update')
 ON CONFLICT (role, permission) DO NOTHING;
 
 --
