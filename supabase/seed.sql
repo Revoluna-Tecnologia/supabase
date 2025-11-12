@@ -10,8 +10,8 @@ SET session_replication_role = replica;
 INSERT INTO "public"."especialidades" ("id", "created_at", "nome", "index") VALUES
 	('d64227b6-4ceb-47ac-9b1c-f51d1735f4ba', '2025-11-12 16:46:55.567197+00', 'Generalista', 0),
 	('a1b2c3d4-e5f6-4789-a012-b3c4d5e6f789', '2025-11-12 16:46:55.567197+00', 'Cardiologia', 1),
-	('e1f2g3h4-i5j6-4789-k012-l3m4n5o6p789', '2025-11-12 16:46:55.567197+00', 'Ortopedia', 2),
-	('q1r2s3t4-u5v6-4789-w012-x3y4z5a6b789', '2025-11-12 16:46:55.567197+00', 'Pediatria', 3)
+	('f1e2d3c4-b5a6-4789-9012-345678901234', '2025-11-12 16:46:55.567197+00', 'Ortopedia', 2),
+	('12345678-9abc-4def-0123-456789abcdef', '2025-11-12 16:46:55.567197+00', 'Pediatria', 3)
 ON CONFLICT (id) DO NOTHING;
 
 --
