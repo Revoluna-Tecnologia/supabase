@@ -62,7 +62,7 @@ ON CONFLICT (role, permission) DO NOTHING;
 -- Data for Name: grupos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-INSERT INTO "public"."grupos" ("id", "nome", "created_at", "update_at", "update_by") VALUES
+INSERT INTO "public"."grupos" ("id", "nome", "created_at", "updated_at", "updated_by") VALUES
 	('ada3a79a-6437-4e27-9e22-40c08c36c59b', 'Grupo Padrão', NOW(), NOW(), 'ada3a79a-6437-4e27-9e22-40c08c36c59b')
 ON CONFLICT (id) DO NOTHING;
 
@@ -101,7 +101,7 @@ ON CONFLICT (id) DO NOTHING;
 --
 
 INSERT INTO "public"."escalistas" (
-    "id", "nome", "telefone", "email", "grupo_id", "created_at", "update_at", "update_by"
+    "id", "nome", "telefone", "email", "grupo_id", "created_at", "updated_at", "updated_by"
 ) VALUES (
     'ada3a79a-6437-4e27-9e22-40c08c36c59b',
     'Escalista Migrado - Dados Órfãos',
