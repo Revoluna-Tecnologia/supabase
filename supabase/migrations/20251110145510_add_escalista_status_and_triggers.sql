@@ -83,6 +83,7 @@ DROP TRIGGER IF EXISTS escalista_invite_accepted_trigger ON auth.users;
 DROP TRIGGER IF EXISTS escalista_invite_sent_trigger ON auth.users;
 
 -- Trigger 2: Ativa escalista quando email é confirmado
+DROP TRIGGER IF EXISTS auth_user_sync_insert ON auth.users;
 CREATE TRIGGER activate_escalista_on_email_confirmation
     AFTER UPDATE OF email_confirmed_at ON auth.users
     FOR EACH ROW
