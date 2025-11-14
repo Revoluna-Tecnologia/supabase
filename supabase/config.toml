@@ -104,6 +104,9 @@ public = true
 [storage.buckets.avatarhospitais]
 public = true
 
+[storage.buckets.carteira-digital]
+public = true
+
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
