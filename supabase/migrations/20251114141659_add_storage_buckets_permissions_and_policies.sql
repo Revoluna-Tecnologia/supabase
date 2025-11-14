@@ -1,10 +1,11 @@
 
 -- Esta migration contém:
 -- 1. Adicionar permissões para coordenador e medicos.delete para admin/moderador
--- 2. DROP completo de todas as políticas existentes em storage.objects
--- 3. Políticas RLS para storage.objects usando houston.authorize
--- 4. Mapeamento usando permissões hospitais.* e medicos.*
--- 5. Configuração de acesso público para leitura (buckets já são públicos)
+-- 2. Dropar função obsoleta houston.authorize(permission) - mantém apenas versão com 4 parâmetros
+-- 3. DROP completo de todas as políticas existentes em storage.objects
+-- 4. Políticas RLS para storage.objects usando houston.authorize (versão com 4 parâmetros)
+-- 5. Mapeamento usando permissões hospitais.* e medicos.*
+-- 6. Configuração de acesso público para leitura (buckets já são públicos)
 --
 -- BUCKETS:
 --   - avatarhospitais: Usa permissões hospitais.* (insert, delete)
@@ -32,7 +33,14 @@ INSERT INTO houston.role_permissions (role, permission) VALUES
 ON CONFLICT (role, permission) DO NOTHING;
 
 -- =============================================================================
--- 2. REMOVER TODAS AS POLÍTICAS DE STORAGE.OBJECTS (TRUNCATE)
+-- 2. DROPAR FUNÇÃO OBSOLETA houston.authorize COM 1 PARÂMETRO
+-- =============================================================================
+-- Remove a função antiga que causa conflito com a nova versão de 4 parâmetros
+
+DROP FUNCTION IF EXISTS houston.authorize(houston.app_permission);
+
+-- =============================================================================
+-- 3. REMOVER TODAS AS POLÍTICAS DE STORAGE.OBJECTS (TRUNCATE)
 -- =============================================================================
 -- Remove todas as políticas existentes na tabela storage.objects para começar limpo
 
@@ -54,7 +62,7 @@ BEGIN
 END$$;
 
 -- =============================================================================
--- 3. POLÍTICAS PARA BUCKET: avatarhospitais
+-- 4. POLÍTICAS PARA BUCKET: avatarhospitais
 -- =============================================================================
 -- Avatares de hospitais são gerenciados por quem tem permissão de hospitais
 -- Lógica: Quem pode gerenciar hospitais, pode gerenciar avatares de hospitais
@@ -89,7 +97,7 @@ USING (
 );
 
 -- =============================================================================
--- 4. POLÍTICAS PARA BUCKET: carteira-digital
+-- 5. POLÍTICAS PARA BUCKET: carteira-digital
 -- =============================================================================
 -- Carteiras digitais são gerenciadas por quem tem permissão de médicos
 -- Lógica: Médicos podem gerenciar suas próprias carteiras, ou quem tem permissão de médicos
@@ -139,7 +147,7 @@ USING (
 );
 
 -- =============================================================================
--- 5. POLÍTICAS PARA BUCKET: profilepictures
+-- 6. POLÍTICAS PARA BUCKET: profilepictures
 -- =============================================================================
 -- Fotos de perfil de médicos são gerenciadas pelos próprios médicos
 -- Lógica: Médicos podem fazer upload/deletar apenas suas próprias fotos
@@ -167,7 +175,7 @@ USING (
 );
 
 -- =============================================================================
--- 6. GRANTS E PERMISSÕES
+-- 7. GRANTS E PERMISSÕES
 -- =============================================================================
 -- Garantir que usuários autenticados podem acessar storage.objects
 
