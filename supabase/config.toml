@@ -211,6 +211,37 @@ policy = "oneshot"
 inspector_port = 8083
 deno_version = 1
 
+# Verificação SMS (Twilio)
+[functions.send-verification-code]
+verify_jwt = false
+
+[functions.verify-code]
+verify_jwt = false
+
+# Verificação Email (Resend)
+[functions.send-verification-link]
+verify_jwt = false
+
+[functions.confirm-verification]
+verify_jwt = false
+
+[functions.listen-verification-link]
+verify_jwt = false
+
+# Notificações Push (Firebase)
+[functions.notification-send]
+verify_jwt = false
+
+[functions.notification-read]
+verify_jwt = false
+
+[functions.notification-reset]
+verify_jwt = false
+
+# Manutenção de Vagas (Cron)
+[functions.manutencao-diaria-vagas]
+verify_jwt = true
+
 # =========================================================================
 # ANALYTICS
 # =========================================================================

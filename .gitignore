@@ -9,4 +9,12 @@
 #supabase
 #supabase/seed.sql
 
+#Secrets (nunca commitar!)
+.env
+.env.*
+!.env.example
+supabase/.env
+supabase/.env.*
+!supabase/.env.example
+
 .mcp.json
