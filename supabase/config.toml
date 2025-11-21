@@ -4,6 +4,36 @@
 # working directory name when running `supabase init`.
 project_id = "supabase"
 
+# =========================================================================
+# REMOTE CONFIGURATIONS - Production (main)
+# =========================================================================
+# These settings are applied automatically when merging PRs to the main branch
+
+[remotes.main]
+project_id = "hxgbaruenomkfeeafmff"
+
+[remotes.main.api]
+schemas = ["public", "graphql_public", "houston"]
+
+[remotes.main.auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/houston/custom_access_token_hook"
+
+# =========================================================================
+# REMOTE CONFIGURATIONS - Staging
+# =========================================================================
+# These settings are applied automatically when merging PRs to the staging branch
+
+[remotes.staging]
+project_id = "dwuxdxlxdeurelnzuypl"
+
+[remotes.staging.api]
+schemas = ["public", "graphql_public", "houston"]
+
+[remotes.staging.auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/houston/custom_access_token_hook"
+
 [api]
 enabled = true
 # Port to use for the API URL.
@@ -97,13 +127,10 @@ file_size_limit = "50MiB"
 # Storage buckets configuration (matches production)
 [storage.buckets.bannersmarketing]
 public = true
-
 [storage.buckets.profilepictures]
 public = true
-
 [storage.buckets.avatarhospitais]
 public = true
-
 [storage.buckets.carteira-digital]
 public = true
 
