@@ -282,7 +282,7 @@ select
   h.id as hospital_id,
   h.nome as hospital_nome,
   e.id as especialidade_id,
-  e.nome as vaga_especialidade,
+  e.nome as especialidade_nome,
   s.id as setor_id,
   s.nome as setor_nome,
   c.id as candidatura_id,
