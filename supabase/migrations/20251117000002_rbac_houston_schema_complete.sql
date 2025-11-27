@@ -364,15 +364,6 @@ begin
   limit 1
   into highest_role_text;
 
-  if highest_role_text is null then
-    -- Insere usuário com papel padrão 'escalista' se não existir
-    insert into houston.user_roles (user_id, role, group_ids, hospital_ids, setor_ids)
-    values (uid, 'escalista', '{}'::uuid[], '{}'::uuid[], '{}'::uuid[])
-    on conflict (user_id, role) do nothing;
-    
-    highest_role_text := 'escalista'; -- define papel padrão
-  end if;
-
   -- Opcional: agregar arrays de group_ids / hospital_ids
   -- CUIDADO: pode explodir tamanho do JWT se muitos
   return jsonb_build_object(
