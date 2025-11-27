@@ -106,7 +106,7 @@ public = true
 
 [auth]
 enabled = true
-site_url = "https://revoluna.flutterflow.app"
+site_url = "hhttps://houston.revoluna.com.br"
 additional_redirect_urls = [
   "https://127.0.0.1:3000/auth/reset-password",
   "https://houston*.vercel.app/auth/reset-password",
