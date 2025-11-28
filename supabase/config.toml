@@ -143,6 +143,32 @@ max_frequency = "1m0s"
 otp_length = 6
 otp_expiry = 3600
 
+#  Email Templates (para desenvolvimento local e branches efemeras)
+# Para producao/staging, os templates devem ser configurados no Dashboard
+[auth.email.template.confirmation]
+subject = "Confirme seu cadastro - Revoluna"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.invite]
+subject = "Você foi convidado - Revoluna"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Seu link de acesso - Revoluna"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Redefinir sua senha - Revoluna"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirmar alteracao de email - Revoluna"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Codigo de verificacao - Revoluna"
+content_path = "./supabase/templates/reauthentication.html"
+
 [auth.sms]
 enable_signup = true
 enable_confirmations = false
