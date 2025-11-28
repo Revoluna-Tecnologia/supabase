@@ -222,9 +222,6 @@ verify_jwt = false
 [functions.send-verification-link]
 verify_jwt = false
 
-[functions.confirm-verification]
-verify_jwt = false
-
 [functions.listen-verification-link]
 verify_jwt = false
 
