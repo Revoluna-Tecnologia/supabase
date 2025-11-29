@@ -205,7 +205,7 @@ insert into houston.role_permissions (role, permission) values
     ('administrador', 'relatorios.select'),
 
     -- ========================================
-    -- MODERADOR (25 permissões)
+    -- MODERADOR (26 permissões)
     -- ========================================
     ('moderador', 'vagas.select'),
     ('moderador', 'vagas.insert'),
@@ -229,6 +229,7 @@ insert into houston.role_permissions (role, permission) values
     ('moderador', 'hospitais.update'),
     ('moderador', 'hospitais.insert'),
     ('moderador', 'hospitais.select'),
+    ('moderador', 'hospitais.delete'),
     ('moderador', 'relatorios.update'),
     ('moderador', 'relatorios.delete'),
     ('moderador', 'relatorios.insert'),
@@ -248,6 +249,7 @@ insert into houston.role_permissions (role, permission) values
     ('gestor', 'medicos.select'),
     ('gestor', 'medicos.insert'),
     ('gestor', 'medicos.update'),
+    ('gestor', 'medicos.delete'),
     ('gestor', 'grupos.select'),
     ('gestor', 'grupos.update'),
     ('gestor', 'roles.select'),
@@ -278,6 +280,7 @@ insert into houston.role_permissions (role, permission) values
     ('coordenador', 'medicos.select'),
     ('coordenador', 'medicos.insert'),
     ('coordenador', 'medicos.update'),
+    ('coordenador', 'medicos.delete'),
     ('coordenador', 'roles.select'),
     ('coordenador', 'candidaturas.select'),
     ('coordenador', 'candidaturas.insert'),
@@ -360,15 +363,6 @@ begin
   where houston.role_level(r.app_role) = r.max_level
   limit 1
   into highest_role_text;
-
-  if highest_role_text is null then
-    -- Insere usuário com papel padrão 'escalista' se não existir
-    insert into houston.user_roles (user_id, role, group_ids, hospital_ids, setor_ids)
-    values (uid, 'escalista', '{}'::uuid[], '{}'::uuid[], '{}'::uuid[])
-    on conflict (user_id, role) do nothing;
-    
-    highest_role_text := 'escalista'; -- define papel padrão
-  end if;
 
   -- Opcional: agregar arrays de group_ids / hospital_ids
   -- CUIDADO: pode explodir tamanho do JWT se muitos
