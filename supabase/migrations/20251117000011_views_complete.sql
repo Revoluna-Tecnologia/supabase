@@ -14,7 +14,6 @@
 
 -- Create view for open vagas
 create or replace view public.vw_vagas_abertas
-with (security_invoker = on)
 as
 SELECT
     row_number() OVER (ORDER BY v.id) AS idx,
@@ -61,8 +60,6 @@ FROM vagas v
     LEFT JOIN formas_recebimento f ON v.forma_recebimento_id = f.id
 WHERE v.status = 'aberta';
 
--- Grant access to anon role
-grant select on public.vw_vagas_abertas to anon;
 -- 9. Recriar view vw_vagas_candidaturas com coluna vaga_id corrigida
 
 CREATE OR REPLACE VIEW public.vw_vagas_candidaturas with (security_invoker = on)
