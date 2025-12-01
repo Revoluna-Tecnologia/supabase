@@ -1,6 +1,6 @@
 -- =====================================================================================
 -- Migration: 20251117000004_schema_standardization_complete.sql
--- Description: Padronização completa de schema - snake_case e pluralização
+-- Description: Padronização completa de schema - snake_case, pluralização e timestamptz
 -- Consolidates: 8 migration files relacionadas a padronização de schema
 --   - 20251110144910_rename_tables_snake_case.sql
 --   - 20251110145310_refactorando_bd.sql (BASE - 1824 lines)
@@ -10,7 +10,21 @@
 --   - 20251110152710_fix_fk_on_tables.sql
 --   - 20251110152910_fix_default_value_on_vagas.sql
 --   - 20251117143500_add_unique_constraints_to_medicos_precadastro.sql
+--
+-- Adicionalmente:
+--   - Configura timezone do database para America/Sao_Paulo
+--   - Converte colunas timestamp (sem timezone) para timestamptz nas tabelas:
+--     * candidaturas: created_at, updated_at
+--     * checkin_checkout: checkin, checkout, created_at, updated_at
+--     * medicos: created_at, delete_at
 -- =====================================================================================
+
+-- =========================================================================
+-- CONFIGURAÇÃO INICIAL: TIMEZONE
+-- =========================================================================
+-- Define o timezone do database para America/Sao_Paulo
+-- Isso garante que todas as branches criadas herdem essa configuração
+ALTER DATABASE postgres SET timezone = 'America/Sao_Paulo';
 
 -- =========================================================================
 -- FASE 0: PREPARAÇÃO - DROP de todas as dependências
@@ -20,6 +34,7 @@
 -- (outras views já foram removidas na migração 03)
 DROP VIEW IF EXISTS public.vw_vagas_candidaturas CASCADE;
 DROP VIEW IF EXISTS public.vw_vagas_abertas CASCADE;
+DROP VIEW IF EXISTS public.vw_folha_pagamento CASCADE;
 DROP VIEW IF EXISTS public.vagas_completo CASCADE;
 
 -- Drop todas as Foreign Keys que serão recriadas
@@ -257,6 +272,15 @@ ALTER TABLE public.medicos RENAME COLUMN medico_especialidade TO especialidade_i
 ALTER TABLE public.medicos RENAME COLUMN medico_anoterminoespecializacao TO ano_termino_especializacao;
 ALTER TABLE public.medicos RENAME COLUMN medico_anoformatura TO ano_formatura;
 
+-- Converter colunas timestamp para timestamptz (com timezone America/Sao_Paulo)
+ALTER TABLE public.medicos
+  ALTER COLUMN created_at TYPE timestamptz
+  USING created_at AT TIME ZONE 'America/Sao_Paulo';
+
+ALTER TABLE public.medicos
+  ALTER COLUMN delete_at TYPE timestamptz
+  USING delete_at AT TIME ZONE 'America/Sao_Paulo';
+
 ALTER TABLE public.medicos DROP CONSTRAINT IF EXISTS medicos_medico_cpf_key;
 ALTER TABLE public.medicos DROP CONSTRAINT IF EXISTS medicos_medico_crm_key;
 ALTER TABLE public.medicos DROP CONSTRAINT IF EXISTS medicos_medico_email_key;
@@ -326,6 +350,15 @@ ALTER TABLE public.candidaturas RENAME COLUMN vagas_id TO vaga_id;
 ALTER TABLE public.candidaturas DROP CONSTRAINT IF EXISTS candidaturas_vagas_valor_check;
 ALTER TABLE public.candidaturas RENAME COLUMN vagas_valor TO vaga_valor;
 
+-- Converter colunas timestamp para timestamptz (com timezone America/Sao_Paulo)
+ALTER TABLE public.candidaturas
+  ALTER COLUMN created_at TYPE timestamptz
+  USING created_at AT TIME ZONE 'America/Sao_Paulo';
+
+ALTER TABLE public.candidaturas
+  ALTER COLUMN updated_at TYPE timestamptz
+  USING updated_at AT TIME ZONE 'America/Sao_Paulo';
+
 ALTER TABLE public.candidaturas DROP CONSTRAINT IF EXISTS candidaturas_pkey;
 ALTER TABLE public.candidaturas DROP CONSTRAINT IF EXISTS candidatura_status_check;
 
@@ -339,6 +372,23 @@ ALTER TABLE public.candidaturas ADD CONSTRAINT candidaturas_vaga_valor_check CHE
 -- 2.17. checkin_checkout
 ALTER TABLE public.checkin_checkout RENAME COLUMN index TO id;
 ALTER TABLE public.checkin_checkout RENAME COLUMN vagas_id TO vaga_id;
+
+-- Converter colunas timestamp para timestamptz (com timezone America/Sao_Paulo)
+ALTER TABLE public.checkin_checkout
+  ALTER COLUMN checkin TYPE timestamptz
+  USING checkin AT TIME ZONE 'America/Sao_Paulo';
+
+ALTER TABLE public.checkin_checkout
+  ALTER COLUMN checkout TYPE timestamptz
+  USING checkout AT TIME ZONE 'America/Sao_Paulo';
+
+ALTER TABLE public.checkin_checkout
+  ALTER COLUMN created_at TYPE timestamptz
+  USING created_at AT TIME ZONE 'America/Sao_Paulo';
+
+ALTER TABLE public.checkin_checkout
+  ALTER COLUMN updated_at TYPE timestamptz
+  USING updated_at AT TIME ZONE 'America/Sao_Paulo';
 
 ALTER TABLE public.checkin_checkout DROP CONSTRAINT IF EXISTS checkin_checkout_pkey;
 ALTER TABLE public.checkin_checkout DROP CONSTRAINT IF EXISTS checkin_checkout_index_key;
