@@ -1,6 +1,6 @@
 -- =====================================================================================
 -- Migration: payments_feature
--- Description: Sistema completo de pagamentos - permissoes, schema, RLS, triggers, view e RPCs
+-- Description: Sistema completo de pagamentos - permissões, schema, RLS, triggers, view e RPCs
 -- Epic #390: Sistema de Pagamentos
 -- =====================================================================================
 
@@ -22,7 +22,7 @@ ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.inse
 ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.update';
 ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.delete';
 
--- IMPORTANTE: Commit para que os novos valores do ENUM fiquem disponiveis
+-- IMPORTANTE: Commit para que os novos valores do ENUM fiquem disponíveis
 COMMIT;
 
 -- =========================================================================
@@ -127,7 +127,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add FK for checkin_aprovado_por (aponta para escalistas.id que e o auth.uid())
+-- Add FK for checkin_aprovado_por (aponta para escalistas.id que é o auth.uid())
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -140,7 +140,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add FK for checkout_aprovado_por (aponta para escalistas.id que e o auth.uid())
+-- Add FK for checkout_aprovado_por (aponta para escalistas.id que é o auth.uid())
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -200,7 +200,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add FK for autorizado_por (aponta para escalistas.id que e o auth.uid())
+-- Add FK for autorizado_por (aponta para escalistas.id que é o auth.uid())
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -213,7 +213,7 @@ BEGIN
     END IF;
 END $$;
 
--- Add FK for pago_por (aponta para escalistas.id que e o auth.uid())
+-- Add FK for pago_por (aponta para escalistas.id que é o auth.uid())
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -411,7 +411,7 @@ CREATE POLICY "checkin_checkout_delete_policy" ON public.checkin_checkout
 -- FASE 7: TRIGGERS - validate_checkin_timing / validate_checkout_timing
 -- =========================================================================
 
--- Atualizar funcao validate_checkin_timing (permite admin/moderador bypass)
+-- Atualizar função validate_checkin_timing (permite admin/moderador bypass)
 CREATE OR REPLACE FUNCTION validate_checkin_timing()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -426,34 +426,34 @@ DECLARE
     candidatura_aprovada BOOLEAN;
     is_admin_or_moderator BOOLEAN;
 BEGIN
-    -- Verificar o role atual do usuario
+    -- Verificar o role atual do usuário
     SELECT auth.role() INTO current_role;
 
-    -- So aplicar verificacao de conflito para usuarios authenticated
-    -- Roles de servico podem trabalhar sem amarras
+    -- Só aplicar verificação de conflito para usuários authenticated
+    -- Roles de serviço podem trabalhar sem amarras
     IF current_role = 'service_role' THEN
         RETURN NEW;
     END IF;
 
-    -- Verificar se e um usuario autenticado
+    -- Verificar se é um usuário autenticado
     IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'ERRO Usuario nao autenticado.';
+        RAISE EXCEPTION 'ERRO Usuário não autenticado.';
     END IF;
 
-    -- Verificar se usuario tem permissao de editar check-in/checkout (admin/moderador)
+    -- Verificar se usuário tem permissão de editar check-in/checkout (admin/moderador)
     SELECT houston.authorize('checkin_checkout.update') INTO is_admin_or_moderator;
 
-    -- Buscar informacoes da vaga
+    -- Buscar informações da vaga
     SELECT v.data, v.hora_inicio, v.hora_fim
     INTO vaga_date, vaga_start_time, vaga_end_time
     FROM public.vagas v
     WHERE v.id = NEW.vaga_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'ERRO Vaga nao encontrada.';
+        RAISE EXCEPTION 'ERRO Vaga não encontrada.';
     END IF;
 
-    -- Verificar se o medico tem candidatura aprovada para esta vaga
+    -- Verificar se o médico tem candidatura aprovada para esta vaga
     SELECT EXISTS(
         SELECT 1
         FROM public.candidaturas c
@@ -463,46 +463,46 @@ BEGIN
     ) INTO candidatura_aprovada;
 
     IF NOT candidatura_aprovada THEN
-        RAISE EXCEPTION 'ERRO Medico nao possui candidatura aprovada para esta vaga.';
+        RAISE EXCEPTION 'ERRO Médico não possui candidatura aprovada para esta vaga.';
     END IF;
 
-    -- Verificar se ja existe check-in para esta combinacao medico/vaga
+    -- Verificar se já existe check-in para esta combinação médico/vaga
     IF EXISTS(
         SELECT 1
         FROM public.checkin_checkout cc
         WHERE cc.vaga_id = NEW.vaga_id
         AND cc.medico_id = NEW.medico_id
     ) THEN
-        RAISE EXCEPTION 'ERRO Check-in ja realizado para esta vaga.';
+        RAISE EXCEPTION 'ERRO Check-in já realizado para esta vaga.';
     END IF;
 
-    -- Construir o timestamp completo do inicio do plantao
+    -- Construir o timestamp completo do início do plantão
     plantao_inicio := (vaga_date::TIMESTAMP + vaga_start_time::TIME);
     plantao_fim := (vaga_date::TIMESTAMP + vaga_end_time::TIME);
 
-    -- Definir janela de check-in (15 minutos antes ate 15 minutos depois)
+    -- Definir janela de check-in (15 minutos antes até 15 minutos depois)
     janela_inicio := plantao_inicio - INTERVAL '15 minutes';
     janela_fim := plantao_inicio + INTERVAL '15 minutes';
 
-    -- Verificar se esta dentro da janela permitida
+    -- Verificar se está dentro da janela permitida
     IF NOW() BETWEEN janela_inicio AND janela_fim THEN
         -- Dentro da janela: permitir sem justificativa
         RETURN NEW;
     ELSE
         -- Fora da janela: exigir justificativa
         IF NEW.checkin_justificativa IS NULL OR TRIM(NEW.checkin_justificativa) = '' THEN
-            RAISE EXCEPTION 'ERRO Horario requer justificativa obrigatoria.';
+            RAISE EXCEPTION 'ERRO Horário requer justificativa obrigatória.';
         END IF;
 
-        -- Se e admin/moderador com permissao, permitir com justificativa
-        -- (mesmo que seja retroativo - depois do plantao terminar)
+        -- Se é admin/moderador com permissão, permitir com justificativa
+        -- (mesmo que seja retroativo - depois do plantão terminar)
         IF is_admin_or_moderator THEN
             RETURN NEW;
         END IF;
 
-        -- Para medicos: verificar se nao e muito cedo ou muito tarde
+        -- Para médicos: verificar se não é muito cedo ou muito tarde
         IF NOW() < janela_inicio OR NOW() > plantao_fim THEN
-            RAISE EXCEPTION 'ERRO Horario nao permitido para fazer Check-in.';
+            RAISE EXCEPTION 'ERRO Horário não permitido para fazer Check-in.';
         END IF;
 
         RETURN NEW;
@@ -510,7 +510,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Atualizar funcao validate_checkout_timing (permite admin/moderador bypass)
+-- Atualizar função validate_checkout_timing (permite admin/moderador bypass)
 CREATE OR REPLACE FUNCTION validate_checkout_timing()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -525,34 +525,34 @@ DECLARE
     candidatura_aprovada BOOLEAN;
     is_admin_or_moderator BOOLEAN;
 BEGIN
-    -- Verificar o role atual do usuario
+    -- Verificar o role atual do usuário
     SELECT auth.role() INTO current_role;
 
-    -- So aplicar verificacao de conflito para usuarios authenticated
-    -- Roles de servico podem trabalhar sem amarras
+    -- Só aplicar verificação de conflito para usuários authenticated
+    -- Roles de serviço podem trabalhar sem amarras
     IF current_role = 'service_role' THEN
         RETURN NEW;
     END IF;
 
-    -- Verificar se e um usuario autenticado
+    -- Verificar se é um usuário autenticado
     IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'ERRO Usuario nao autenticado.';
+        RAISE EXCEPTION 'ERRO Usuário não autenticado.';
     END IF;
 
-    -- Verificar se usuario tem permissao de editar check-in/checkout (admin/moderador)
+    -- Verificar se usuário tem permissão de editar check-in/checkout (admin/moderador)
     SELECT houston.authorize('checkin_checkout.update') INTO is_admin_or_moderator;
 
-    -- Buscar informacoes da vaga
+    -- Buscar informações da vaga
     SELECT v.data, v.hora_inicio, v.hora_fim
     INTO vaga_date, vaga_start_time, vaga_end_time
     FROM public.vagas v
     WHERE v.id = NEW.vaga_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'ERRO Vaga nao encontrada.';
+        RAISE EXCEPTION 'ERRO Vaga não encontrada.';
     END IF;
 
-    -- Verificar se o medico tem candidatura aprovada para esta vaga
+    -- Verificar se o médico tem candidatura aprovada para esta vaga
     SELECT EXISTS(
         SELECT 1
         FROM public.candidaturas c
@@ -562,11 +562,11 @@ BEGIN
     ) INTO candidatura_aprovada;
 
     IF NOT candidatura_aprovada THEN
-        RAISE EXCEPTION 'ERRO Medico nao possui candidatura aprovada para esta vaga.';
+        RAISE EXCEPTION 'ERRO Médico não possui candidatura aprovada para esta vaga.';
     END IF;
 
-    -- Verificar se existe check-in para esta combinacao medico/vaga
-    -- (So verifica no INSERT de checkout, nao no UPDATE)
+    -- Verificar se existe check-in para esta combinação médico/vaga
+    -- (Só verifica no INSERT de checkout, não no UPDATE)
     IF TG_OP = 'INSERT' AND NOT EXISTS(
         SELECT 1
         FROM public.checkin_checkout cc
@@ -574,36 +574,36 @@ BEGIN
         AND cc.medico_id = NEW.medico_id
         AND cc.checkin IS NOT NULL
     ) THEN
-        RAISE EXCEPTION 'ERRO Check-in ainda nao realizado para esta vaga.';
+        RAISE EXCEPTION 'ERRO Check-in ainda não realizado para esta vaga.';
     END IF;
 
-    -- Construir o timestamp completo do plantao
+    -- Construir o timestamp completo do plantão
     plantao_inicio := (vaga_date::TIMESTAMP + vaga_start_time::TIME);
     plantao_fim := (vaga_date::TIMESTAMP + vaga_end_time::TIME);
 
-    -- Definir janela de check-out (15 minutos antes ate 15 minutos depois do final)
+    -- Definir janela de check-out (15 minutos antes até 15 minutos depois do final)
     janela_inicio := plantao_fim - INTERVAL '15 minutes';
     janela_fim := plantao_fim + INTERVAL '15 minutes';
 
-    -- Verificar se esta dentro da janela permitida
+    -- Verificar se está dentro da janela permitida
     IF NOW() BETWEEN janela_inicio AND janela_fim THEN
         -- Dentro da janela: permitir sem justificativa
         RETURN NEW;
     ELSE
         -- Fora da janela: exigir justificativa
         IF NEW.checkout_justificativa IS NULL OR TRIM(NEW.checkout_justificativa) = '' THEN
-            RAISE EXCEPTION 'ERRO Horario requer justificativa obrigatoria.';
+            RAISE EXCEPTION 'ERRO Horário requer justificativa obrigatória.';
         END IF;
 
-        -- Se e admin/moderador com permissao, permitir com justificativa
-        -- (mesmo que seja retroativo - depois do plantao terminar)
+        -- Se é admin/moderador com permissão, permitir com justificativa
+        -- (mesmo que seja retroativo - depois do plantão terminar)
         IF is_admin_or_moderator THEN
             RETURN NEW;
         END IF;
 
-        -- Para medicos: verificar se nao e muito cedo
+        -- Para médicos: verificar se não é muito cedo
         IF NOW() < janela_inicio THEN
-            RAISE EXCEPTION 'ERRO Horario nao permitido para fazer Check-out.';
+            RAISE EXCEPTION 'ERRO Horário não permitido para fazer Check-out.';
         END IF;
 
         RETURN NEW;
@@ -611,20 +611,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Comentarios explicativos
+-- Comentários explicativos
 COMMENT ON FUNCTION validate_checkin_timing() IS
 'Valida o timing do check-in. Permite:
-- Dentro da janela (15min antes/depois do inicio): sem justificativa
-- Fora da janela mas durante plantao: com justificativa
-- Admin/moderador com permissao checkin_checkout.update: com justificativa (mesmo retroativo)
-- Bloqueia medicos tentando check-in muito cedo ou depois do plantao';
+- Dentro da janela (15min antes/depois do início): sem justificativa
+- Fora da janela mas durante plantão: com justificativa
+- Admin/moderador com permissão checkin_checkout.update: com justificativa (mesmo retroativo)
+- Bloqueia médicos tentando check-in muito cedo ou depois do plantão';
 
 COMMENT ON FUNCTION validate_checkout_timing() IS
 'Valida o timing do checkout. Permite:
 - Dentro da janela (15min antes/depois do fim): sem justificativa
 - Fora da janela: com justificativa
-- Admin/moderador com permissao checkin_checkout.update: com justificativa (mesmo retroativo)
-- Bloqueia medicos tentando checkout muito cedo';
+- Admin/moderador com permissão checkin_checkout.update: com justificativa (mesmo retroativo)
+- Bloqueia médicos tentando checkout muito cedo';
 
 -- =========================================================================
 -- FASE 8: VIEW - vw_plantoes_pagamentos
@@ -735,7 +735,7 @@ ON public.vagas(data, status);
 -- FASE 10: RPC FUNCTIONS
 -- =========================================================================
 
--- Funcao para autorizar pagamento (bypassa problema de RLS no retorno)
+-- Função para autorizar pagamento (bypassa problema de RLS no retorno)
 CREATE OR REPLACE FUNCTION public.autorizar_pagamento(
   p_pagamento_id uuid,
   p_user_id uuid,
@@ -747,14 +747,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Verificar se usuario tem permissao (usando a mesma logica do RLS)
+  -- Verificar se usuário tem permissão (usando a mesma lógica do RLS)
   IF NOT EXISTS (
     SELECT 1 FROM pagamentos pg
     JOIN vagas v ON v.id = pg.vaga_id
     WHERE pg.id = p_pagamento_id
     AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
   ) THEN
-    RAISE EXCEPTION 'Sem permissao para autorizar este pagamento';
+    RAISE EXCEPTION 'Sem permissão para autorizar este pagamento';
   END IF;
 
   -- Executar o update
@@ -766,12 +766,12 @@ BEGIN
   WHERE id = p_pagamento_id;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Pagamento nao encontrado';
+    RAISE EXCEPTION 'Pagamento não encontrado';
   END IF;
 END;
 $$;
 
--- Funcao para marcar como pago
+-- Função para marcar como pago
 CREATE OR REPLACE FUNCTION public.marcar_pagamento_pago(
   p_pagamento_id uuid,
   p_user_id uuid,
@@ -783,14 +783,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Verificar se usuario tem permissao
+  -- Verificar se usuário tem permissão
   IF NOT EXISTS (
     SELECT 1 FROM pagamentos pg
     JOIN vagas v ON v.id = pg.vaga_id
     WHERE pg.id = p_pagamento_id
     AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
   ) THEN
-    RAISE EXCEPTION 'Sem permissao para marcar este pagamento como pago';
+    RAISE EXCEPTION 'Sem permissão para marcar este pagamento como pago';
   END IF;
 
   -- Executar o update
@@ -802,7 +802,7 @@ BEGIN
   WHERE id = p_pagamento_id;
 
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Pagamento nao encontrado';
+    RAISE EXCEPTION 'Pagamento não encontrado';
   END IF;
 END;
 $$;
