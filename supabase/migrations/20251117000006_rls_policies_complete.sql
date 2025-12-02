@@ -332,13 +332,13 @@ DROP POLICY IF EXISTS "vagas_update_policy" ON public.vagas;
 CREATE POLICY "vagas_delete_policy" ON public.vagas
   FOR DELETE TO authenticated
   USING (
-    houston.scheduler_belongs_can_access('vagas.delete'::houston.app_permission, hospital_id, setor_id, grupo_id)
+    houston.authorize('vagas.delete'::houston.app_permission, hospital_id, setor_id, grupo_id)
   );
 
 CREATE POLICY "vagas_insert_policy" ON public.vagas
   FOR INSERT TO authenticated
   WITH CHECK (
-    houston.scheduler_belongs_can_access('vagas.insert'::houston.app_permission, hospital_id, setor_id, grupo_id)
+    houston.authorize('vagas.insert'::houston.app_permission, hospital_id, setor_id, grupo_id)
   );
 
 CREATE POLICY "vagas_select_policy" ON public.vagas
@@ -351,10 +351,10 @@ CREATE POLICY "vagas_select_policy" ON public.vagas
 CREATE POLICY "vagas_update_policy" ON public.vagas
   FOR UPDATE TO authenticated
   USING (
-    houston.scheduler_belongs_can_access('vagas.update'::houston.app_permission, hospital_id, setor_id, grupo_id)
+    houston.authorize('vagas.update'::houston.app_permission, hospital_id, setor_id, grupo_id)
   )
   WITH CHECK (
-    houston.scheduler_belongs_can_access('vagas.update'::houston.app_permission, hospital_id, setor_id, grupo_id)
+    houston.authorize('vagas.update'::houston.app_permission, hospital_id, setor_id, grupo_id)
   );
 
 -- ============================================================================
