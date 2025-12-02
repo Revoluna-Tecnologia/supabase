@@ -852,6 +852,100 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION verificar_conflito_vaga_designada(
+    p_medico_id UUID,
+    p_data date,
+    p_hora_inicio time,
+    p_hora_fim time
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  medico_userid uuid;
+  conflito_encontrado boolean := false;
+  vaga_data date;
+  vaga_inicio time;
+  vaga_fim time;
+  vaga_conflitante_info text;
+  vaga_inicio_ts timestamp;
+  vaga_fim_ts timestamp;
+BEGIN
+  medico_userid := p_medico_id;
+  vaga_data := p_data;
+  vaga_inicio := p_hora_inicio;
+  vaga_fim := p_hora_fim;
+
+  -- CONVERTER para timestamps considerando turnos noturnos
+  vaga_inicio_ts := vaga_data + vaga_inicio;
+
+  -- Se hora fim <= hora início, é turno noturno (vai para o dia seguinte)
+  IF vaga_fim <= vaga_inicio THEN
+      vaga_fim_ts := (vaga_data + INTERVAL '1 day') + vaga_fim;
+  ELSE
+      vaga_fim_ts := vaga_data + vaga_fim;
+  END IF;
+
+  -- Verificar conflitos de horário considerando medico_id e medico_precadastro_id
+  SELECT
+      EXISTS (
+          SELECT 1
+          FROM candidaturas c
+          JOIN vagas v ON c.vaga_id = v.id
+          WHERE (
+              -- Para médicos normais
+              (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+              OR
+              -- Para médicos pré-cadastrados
+              (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+          )
+          AND c.status = 'APROVADO'
+          AND (
+              -- Usar OVERLAPS com timestamps calculados
+              (v.data + v.hora_inicio,
+               CASE
+                   WHEN v.hora_fim <= v.hora_inicio
+                   THEN (v.data + INTERVAL '1 day') + v.hora_fim
+                   ELSE v.data + v.hora_fim
+               END
+              ) OVERLAPS
+              (vaga_inicio_ts, vaga_fim_ts)
+          )
+      ),
+      (
+          SELECT 'Plantão já aprovado: ' || v.data || ' das ' || v.hora_inicio || ' às ' || v.hora_fim ||
+                 CASE WHEN v.hora_fim <= v.hora_inicio THEN ' (madrugada)' ELSE '' END
+          FROM candidaturas c
+          JOIN vagas v ON c.vaga_id = v.id
+          WHERE (
+              -- Para médicos normais
+              (c.medico_id = medico_userid AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid)
+              OR
+              -- Para médicos pré-cadastrados
+              (c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid AND c.medico_precadastro_id = medico_userid)
+          )
+          AND c.status = 'APROVADO'
+          AND (
+              (v.data + v.hora_inicio,
+               CASE
+                   WHEN v.hora_fim <= v.hora_inicio
+                   THEN (v.data + INTERVAL '1 day') + v.hora_fim
+                   ELSE v.data + v.hora_fim
+               END
+              ) OVERLAPS
+              (vaga_inicio_ts, vaga_fim_ts)
+          )
+          LIMIT 1
+      )
+  INTO conflito_encontrado, vaga_conflitante_info;
+
+  -- Bloquear se houver conflito de horário
+  IF conflito_encontrado THEN
+      RAISE EXCEPTION 'CONFLITO DE HORÁRIO DETECTADO: %', vaga_conflitante_info;
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION aprovacao_automatica_favoritos()
 RETURNS trigger
 LANGUAGE plpgsql
