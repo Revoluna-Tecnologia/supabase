@@ -109,9 +109,13 @@ enabled = true
 site_url = "hhttps://houston.revoluna.com.br"
 additional_redirect_urls = [
   "https://127.0.0.1:3000/auth/reset-password",
+  "https://127.0.0.1:3000/auth/create-password",
   "https://houston*.vercel.app/auth/reset-password",
+  "https://houston*.vercel.app/auth/create-password",
   "https://localhost:3000/auth/reset-password",
+  "https://localhost:3000/auth/create-password",
   "https://houston*.revoluna.com.br/auth/reset-password",
+  "https://houston*.revoluna.com.br/auth/create-password",
   "revoluna://revoluna.com",
   "revoluna://revoluna.com/cadastro1",
   "revoluna://revoluna.com/loginMagicLink"
