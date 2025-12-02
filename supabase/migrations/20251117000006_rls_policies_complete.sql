@@ -368,15 +368,21 @@ DROP POLICY IF EXISTS "candidaturas_update_policy" ON public.candidaturas;
 CREATE POLICY "candidaturas_delete_policy" ON public.candidaturas
   FOR DELETE TO authenticated
   USING (
+    -- REVOLUNA: Apenas próprias candidaturas
     (
       EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() = medico_id
+      AND auth.uid() IN (medico_id, medico_precadastro_id)
     )
-    OR (
+    OR
+    -- HOUSTON: Por grupo/hospital/setor
+    (
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = candidaturas.vaga_id
-          AND houston.scheduler_belongs_can_access('candidaturas.delete'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize(
+            'candidaturas.delete'::houston.app_permission,
+            v.hospital_id, v.setor_id, v.grupo_id
+          )
       )
     )
   );
@@ -384,15 +390,21 @@ CREATE POLICY "candidaturas_delete_policy" ON public.candidaturas
 CREATE POLICY "candidaturas_insert_policy" ON public.candidaturas
   FOR INSERT TO authenticated
   WITH CHECK (
+    -- REVOLUNA: Apenas próprias candidaturas
     (
       EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() = medico_id
+      AND auth.uid() IN (medico_id, medico_precadastro_id)
     )
-    OR (
+    OR
+    -- HOUSTON: Por grupo/hospital/setor
+    (
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = candidaturas.vaga_id
-          AND houston.scheduler_belongs_can_access('candidaturas.insert'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize(
+            'candidaturas.insert'::houston.app_permission,
+            v.hospital_id, v.setor_id, v.grupo_id
+          )
       )
     )
   );
@@ -400,15 +412,24 @@ CREATE POLICY "candidaturas_insert_policy" ON public.candidaturas
 CREATE POLICY "candidaturas_select_policy" ON public.candidaturas
   FOR SELECT TO authenticated
   USING (
+    -- REVOLUNA: Próprias + colegas
     (
       EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() = medico_id
+      AND (
+        auth.uid() IN (medico_id, medico_precadastro_id)
+        OR pode_ver_candidatura_colega(id)
+      )
     )
-    OR (
+    OR
+    -- HOUSTON: Por grupo/hospital/setor
+    (
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = candidaturas.vaga_id
-          AND houston.vaga_in_user_scope(v.grupo_id, v.hospital_id)
+          AND houston.authorize(
+            'candidaturas.select'::houston.app_permission,
+            v.hospital_id, v.setor_id, v.grupo_id
+          )
       )
     )
   );
@@ -416,28 +437,40 @@ CREATE POLICY "candidaturas_select_policy" ON public.candidaturas
 CREATE POLICY "candidaturas_update_policy" ON public.candidaturas
   FOR UPDATE TO authenticated
   USING (
+    -- REVOLUNA: Apenas próprias candidaturas
     (
       EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() = medico_id
+      AND auth.uid() IN (medico_id, medico_precadastro_id)
     )
-    OR (
+    OR
+    -- HOUSTON: Por grupo/hospital/setor
+    (
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = candidaturas.vaga_id
-          AND houston.scheduler_belongs_can_access('candidaturas.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize(
+            'candidaturas.update'::houston.app_permission,
+            v.hospital_id, v.setor_id, v.grupo_id
+          )
       )
     )
   )
   WITH CHECK (
+    -- REVOLUNA: Apenas próprias candidaturas
     (
       EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() = medico_id
+      AND auth.uid() IN (medico_id, medico_precadastro_id)
     )
-    OR (
+    OR
+    -- HOUSTON: Por grupo/hospital/setor
+    (
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = candidaturas.vaga_id
-          AND houston.scheduler_belongs_can_access('candidaturas.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize(
+            'candidaturas.update'::houston.app_permission,
+            v.hospital_id, v.setor_id, v.grupo_id
+          )
       )
     )
   );
