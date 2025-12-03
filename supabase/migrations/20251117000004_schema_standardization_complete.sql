@@ -1142,7 +1142,7 @@ CREATE TRIGGER candidaturas_3_atualizar_contador_vagas
 
 DROP TRIGGER IF EXISTS candidaturas_4_fechar_vaga_ao_aprovar ON candidaturas;
 CREATE TRIGGER candidaturas_4_fechar_vaga_ao_aprovar
-    AFTER UPDATE ON candidaturas FOR EACH ROW WHEN (NEW.status = 'APROVADO'::text)
+    AFTER INSERT OR UPDATE ON candidaturas FOR EACH ROW WHEN (NEW.status = 'APROVADO'::text)
     EXECUTE FUNCTION atualizar_vagas_status();
 
 DROP TRIGGER IF EXISTS candidaturas_5_contar_plantoes_medico ON candidaturas;
