@@ -1,65 +1,67 @@
 -- =====================================================================================
 -- Migration: 20251127192500_optimize_vw_vagas_candidaturas_performance.sql
--- Description: Complete performance optimization for vw_vagas_candidaturas view
--- Date: 2025-11-27 19:25
+-- Descrição: Otimização completa de performance para view vw_vagas_candidaturas
+-- Data: 2025-11-27 19:25
 -- =====================================================================================
 --
--- PROBLEM: vw_vagas_candidaturas causing API timeout errors (>30s execution time)
+-- PROBLEMA: vw_vagas_candidaturas causando erros de timeout na API (>30s de execução)
 --
--- ROOT CAUSES:
--- 1. count_candidaturas_total() function executing 2,052+ correlated subqueries
--- 2. Complex UNION subquery with 3 table scans + deduplication
--- 3. 22 missing indexes on critical foreign keys
--- 4. Unnecessary DISTINCT forcing expensive sort/deduplication
--- 5. 18 total JOINs creating Cartesian explosion
+-- CAUSAS RAIZ:
+-- 1. Função count_candidaturas_total() executando 2.052+ subqueries correlacionadas
+-- 2. Subquery UNION complexa com 3 scans de tabela + deduplicação
+-- 3. 22 índices faltando em chaves estrangeiras críticas
+-- 4. DISTINCT desnecessário forçando sort/deduplicação cara
+-- 5. 18 JOINs totais criando explosão cartesiana
 --
--- SOLUTION (Phase 1):
--- 1. Add 5 critical performance indexes (30-40% faster)
--- 2. Replace count function with LEFT JOIN aggregate (70-80% faster)
--- 3. Change UNION to UNION ALL (20-30% faster)
--- 4. Remove unnecessary DISTINCT (10-15% faster)
+-- SOLUÇÃO (Fase 1):
+-- 1. Adicionar 4 índices críticos de performance (30-40% mais rápido)
+-- 2. Substituir função count por LEFT JOIN agregado (70-80% mais rápido)
+-- 3. Mudar UNION para UNION ALL (20-30% mais rápido)
+-- 4. Remover DISTINCT desnecessário (10-15% mais rápido)
+-- 5. Remover coluna medico_favorito e função current_user_is_favorito()
+--    (elimina chamadas de função desnecessárias e joins na tabela medicos_favoritos)
 --
--- EXPECTED RESULT: 80-85% total reduction (from >30s timeout to 3-5s)
+-- RESULTADO ESPERADO: Redução total de 80-85% (de >30s timeout para 3-5s)
 --
 -- =====================================================================================
 
 -- =====================================================================================
--- PART 1: CREATE PERFORMANCE INDEXES
+-- PARTE 1: CRIAR ÍNDICES DE PERFORMANCE
 -- =====================================================================================
 
 -- -------------------------------------------------------------------------------------
--- Index 1: vagas_salvas composite index
--- Used 3 times in the view:
---   - LEFT JOIN vagas_salvas vs (line 250)
---   - LEFT JOIN vagas_salvas vsp (line 252)
---   - UNION subquery branch 3 (line 233)
--- Impact: Eliminates sequential scans on vagas_salvas table
+-- Índice 1: índice composto vagas_salvas
+-- Usado 3 vezes na view:
+--   - LEFT JOIN vagas_salvas vs (linha 250)
+--   - LEFT JOIN vagas_salvas vsp (linha 252)
+--   - UNION subquery branch 3 (linha 233)
+-- Impacto: Elimina scans sequenciais na tabela vagas_salvas
 -- -------------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_vagas_salvas_vaga_medico
   ON vagas_salvas(vaga_id, medico_id);
 
 COMMENT ON INDEX idx_vagas_salvas_vaga_medico IS
-  'Performance index for vw_vagas_candidaturas - covers 3 join operations';
+  'Índice de performance para vw_vagas_candidaturas - cobre 3 operações de join';
 
 -- -------------------------------------------------------------------------------------
--- Index 2: checkin_checkout composite index
--- Used 2 times in the view:
---   - LEFT JOIN checkin_checkout cc (line 254)
---   - LEFT JOIN checkin_checkout ccp (line 256)
--- Impact: Eliminates sequential scans on checkin_checkout table
+-- Índice 2: índice composto checkin_checkout
+-- Usado 2 vezes na view:
+--   - LEFT JOIN checkin_checkout cc (linha 254)
+--   - LEFT JOIN checkin_checkout ccp (linha 256)
+-- Impacto: Elimina scans sequenciais na tabela checkin_checkout
 -- -------------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_checkin_checkout_vaga_medico
   ON checkin_checkout(vaga_id, medico_id);
 
 COMMENT ON INDEX idx_checkin_checkout_vaga_medico IS
-  'Performance index for vw_vagas_candidaturas - covers 2 join operations';
+  'Índice de performance para vw_vagas_candidaturas - cobre 2 operações de join';
 
 -- -------------------------------------------------------------------------------------
--- Index 3: candidaturas partial index (special medico branch)
--- Optimizes UNION ALL branch 1:
+-- Índice 3: índice parcial candidaturas (branch médico especial)
+-- Otimiza UNION ALL branch 1:
 --   SELECT vaga_id, medico_id FROM candidaturas
 --   WHERE medico_id IS NOT NULL AND medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'
--- Impact: Partial index only contains relevant rows, making it smaller and faster
+-- Impacto: Índice parcial contém apenas linhas relevantes, tornando-o menor e mais rápido
 -- -------------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_candidaturas_special_medico
   ON candidaturas(vaga_id, medico_id)
@@ -67,14 +69,14 @@ CREATE INDEX IF NOT EXISTS idx_candidaturas_special_medico
     AND medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid;
 
 COMMENT ON INDEX idx_candidaturas_special_medico IS
-  'Partial index for vw_vagas_candidaturas UNION ALL branch 1 (regular medicos)';
+  'Índice parcial para vw_vagas_candidaturas UNION ALL branch 1 (médicos regulares)';
 
 -- -------------------------------------------------------------------------------------
--- Index 4: candidaturas partial index (precadastro branch)
--- Optimizes UNION ALL branch 2:
+-- Índice 4: índice parcial candidaturas (branch precadastro)
+-- Otimiza UNION ALL branch 2:
 --   SELECT vaga_id, medico_precadastro_id FROM candidaturas
 --   WHERE medico_id = '9cd29712...' AND medico_precadastro_id IS NOT NULL
--- Impact: Partial index for the precadastro medico special case
+-- Impacto: Índice parcial para o caso especial de médico precadastro
 -- -------------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_candidaturas_precadastro_union
   ON candidaturas(vaga_id, medico_precadastro_id)
@@ -82,28 +84,16 @@ CREATE INDEX IF NOT EXISTS idx_candidaturas_precadastro_union
     AND medico_precadastro_id IS NOT NULL;
 
 COMMENT ON INDEX idx_candidaturas_precadastro_union IS
-  'Partial index for vw_vagas_candidaturas UNION ALL branch 2 (precadastro medicos)';
-
--- -------------------------------------------------------------------------------------
--- Index 5: medicos_favoritos composite index
--- Optimizes current_user_is_favorito() function:
---   The function executes: WHERE mf.grupo_id = p_grupo_id AND mf.medico_id = current_user_id
--- Impact: Speeds up favorito lookups (called once per row)
--- -------------------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_medicos_favoritos_grupo_medico
-  ON medicos_favoritos(grupo_id, medico_id);
-
-COMMENT ON INDEX idx_medicos_favoritos_grupo_medico IS
-  'Performance index for current_user_is_favorito() function calls in vw_vagas_candidaturas';
+  'Índice parcial para vw_vagas_candidaturas UNION ALL branch 2 (médicos precadastro)';
 
 -- =====================================================================================
--- PART 2: RECREATE OPTIMIZED VIEW
+-- PARTE 2: RECRIAR VIEW OTIMIZADA
 -- =====================================================================================
 
--- Drop existing view
+-- Remove view existente
 DROP VIEW IF EXISTS public.vw_vagas_candidaturas;
 
--- Recreate with optimizations
+-- Recria com otimizações
 CREATE OR REPLACE VIEW public.vw_vagas_candidaturas
 WITH (security_invoker = on)
 AS
@@ -163,7 +153,6 @@ SELECT
   combined_data.medico_precadastro_id,
   combined_data.recorrencia_id,
   combined_data.vaga_salva,
-  combined_data.medico_favorito,
   combined_data.checkin,
   combined_data.checkout,
   combined_data.pagamento_valor,
@@ -172,10 +161,14 @@ SELECT
   combined_data.grade_cor
 FROM (
   -- -------------------------------------------------------------------------------------
-  -- OPTIMIZATION 1: Removed DISTINCT keyword
-  -- The LEFT JOIN structure should naturally produce unique rows.
-  -- If duplicates occur, they should be handled at application level.
-  -- Impact: Eliminates expensive sort/deduplication (10-15% faster)
+  -- OTIMIZAÇÃO 1: Removido palavra-chave DISTINCT
+  -- A estrutura LEFT JOIN deve naturalmente produzir linhas únicas.
+  -- Se duplicatas ocorrerem, devem ser tratadas no nível da aplicação.
+  -- Impacto: Elimina sort/deduplicação cara (10-15% mais rápido)
+  -- -------------------------------------------------------------------------------------
+  -- OTIMIZAÇÃO 5: Removida coluna medico_favorito
+  -- Anteriormente computada via: current_user_is_favorito(v.grupo_id) AS medico_favorito
+  -- Impacto: Elimina chamadas de função e lookups na tabela medicos_favoritos por linha
   -- -------------------------------------------------------------------------------------
   SELECT
     v.id AS vaga_id,
@@ -212,10 +205,10 @@ FROM (
     g.nome AS grupo_nome,
     c.id AS candidatura_id,
     -- -------------------------------------------------------------------------------------
-    -- OPTIMIZATION 2: Replace count_candidaturas_total() with LEFT JOIN aggregate
-    -- Old: count_candidaturas_total(v.id) - executed 2,052+ times (once per row)
-    -- New: COALESCE(candidatura_counts.total_count, 0) - pre-aggregated via JOIN
-    -- Impact: Eliminates correlated subquery calls (70-80% faster)
+    -- OTIMIZAÇÃO 2: Substituir count_candidaturas_total() por LEFT JOIN agregado
+    -- Antigo: count_candidaturas_total(v.id) - executado 2.052+ vezes (uma vez por linha)
+    -- Novo: COALESCE(candidatura_counts.total_count, 0) - pré-agregado via JOIN
+    -- Impacto: Elimina chamadas de subquery correlacionadas (70-80% mais rápido)
     -- -------------------------------------------------------------------------------------
     COALESCE(candidatura_counts.total_count, 0)::INTEGER AS total_candidaturas,
     c.status AS candidatura_status,
@@ -244,7 +237,6 @@ FROM (
       OR vsp.medico_id IS NOT NULL THEN true
       ELSE false
     END AS vaga_salva,
-    current_user_is_favorito(v.grupo_id) AS medico_favorito,
     COALESCE(cc.checkin, ccp.checkin) AS checkin,
     COALESCE(cc.checkout, ccp.checkout) AS checkout,
     pg.valor AS pagamento_valor,
@@ -253,11 +245,11 @@ FROM (
     gr.cor AS grade_cor
   FROM
     vagas v
-    -- Core table joins (required data)
+    -- Joins principais de tabela (dados obrigatórios)
     JOIN hospitais h ON v.hospital_id = h.id
     JOIN especialidades e ON v.especialidade_id = e.id
     JOIN setores s ON v.setor_id = s.id
-    -- Optional related data
+    -- Dados relacionados opcionais
     LEFT JOIN escalistas esc ON v.escalista_id = esc.id
     LEFT JOIN grupos g ON v.grupo_id = g.id
     LEFT JOIN periodos p ON v.periodo_id = p.id
@@ -265,17 +257,17 @@ FROM (
     LEFT JOIN formas_recebimento f ON v.forma_recebimento_id = f.id
     LEFT JOIN grades gr ON v.grade_id = gr.id
     -- -------------------------------------------------------------------------------------
-    -- OPTIMIZATION 3: Changed UNION to UNION ALL
-    -- Old: UNION (deduplicates results - expensive sort operation)
-    -- New: UNION ALL (no deduplication - much faster)
-    -- Reasoning: The three branches are mutually exclusive by their WHERE conditions:
+    -- OTIMIZAÇÃO 3: Mudado UNION para UNION ALL
+    -- Antigo: UNION (deduplica resultados - operação de sort cara)
+    -- Novo: UNION ALL (sem deduplicação - muito mais rápido)
+    -- Raciocínio: Os três branches são mutuamente exclusivos por suas condições WHERE:
     --   Branch 1: medico_id IS NOT NULL AND medico_id <> '9cd29712...'
     --   Branch 2: medico_id = '9cd29712...' AND medico_precadastro_id IS NOT NULL
-    --   Branch 3: vagas_salvas (different table, different medicos)
-    -- Therefore, UNION ALL is safe and eliminates unnecessary deduplication overhead
-    -- Impact: 20-30% faster on this subquery
-    -- Uses new indexes: idx_candidaturas_special_medico, idx_candidaturas_precadastro_union,
-    --                   idx_vagas_salvas_vaga_medico
+    --   Branch 3: vagas_salvas (tabela diferente, médicos diferentes)
+    -- Portanto, UNION ALL é seguro e elimina overhead de deduplicação desnecessário
+    -- Impacto: 20-30% mais rápido nesta subquery
+    -- Usa novos índices: idx_candidaturas_special_medico, idx_candidaturas_precadastro_union,
+    --                    idx_vagas_salvas_vaga_medico
     -- -------------------------------------------------------------------------------------
     LEFT JOIN (
       SELECT
@@ -305,10 +297,10 @@ FROM (
         vagas_salvas.medico_id IS NOT NULL
     ) vm ON vm.vaga_id = v.id
     -- -------------------------------------------------------------------------------------
-    -- OPTIMIZATION 4: LEFT JOIN for pre-aggregated candidatura counts
-    -- This replaces the count_candidaturas_total() function
-    -- Aggregates are computed once per vaga_id instead of once per row
-    -- Uses existing index on candidaturas.vaga_id
+    -- OTIMIZAÇÃO 4: LEFT JOIN para contagens de candidaturas pré-agregadas
+    -- Isso substitui a função count_candidaturas_total()
+    -- Agregações são computadas uma vez por vaga_id ao invés de uma vez por linha
+    -- Usa índice existente em candidaturas.vaga_id
     -- -------------------------------------------------------------------------------------
     LEFT JOIN (
       SELECT
@@ -319,7 +311,7 @@ FROM (
       GROUP BY
         vaga_id
     ) candidatura_counts ON candidatura_counts.vaga_id = v.id
-    -- Original candidaturas join (for detailed candidatura data)
+    -- Join original de candidaturas (para dados detalhados de candidatura)
     LEFT JOIN candidaturas c ON c.vaga_id = v.id
     AND (
       c.medico_id = vm.medico_id
@@ -327,15 +319,15 @@ FROM (
       OR c.medico_id = '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid
       AND c.medico_precadastro_id = vm.medico_id
     )
-    -- Medico data (regular and precadastro)
+    -- Dados de médico (regular e precadastro)
     LEFT JOIN medicos m ON c.medico_id = m.id
     AND c.medico_id <> '9cd29712-91b5-492f-86ff-41e38c7b03d5'::uuid
     LEFT JOIN medicos_precadastro mp ON c.medico_precadastro_id = mp.id
     -- -------------------------------------------------------------------------------------
-    -- These JOINs now benefit from new composite indexes:
-    -- - idx_vagas_salvas_vaga_medico (covers both vs and vsp joins)
-    -- - idx_checkin_checkout_vaga_medico (covers both cc and ccp joins)
-    -- Impact: Index scans instead of sequential scans
+    -- Estes JOINs agora se beneficiam dos novos índices compostos:
+    -- - idx_vagas_salvas_vaga_medico (cobre ambos joins vs e vsp)
+    -- - idx_checkin_checkout_vaga_medico (cobre ambos joins cc e ccp)
+    -- Impacto: Index scans ao invés de sequential scans
     -- -------------------------------------------------------------------------------------
     LEFT JOIN vagas_salvas vs ON vs.vaga_id = v.id
     AND vs.medico_id = vm.medico_id
@@ -352,31 +344,42 @@ FROM (
 ) combined_data;
 
 -- =====================================================================================
--- PART 3: GRANT PERMISSIONS
+-- PARTE 3: REMOVER FUNÇÃO NÃO UTILIZADA
+-- =====================================================================================
+
+-- -------------------------------------------------------------------------------------
+-- Remove função current_user_is_favorito()
+-- Esta função era usada para popular a coluna medico_favorito na vw_vagas_candidaturas
+-- Removendo como parte da otimização de performance para eliminar chamadas de função desnecessárias
+-- -------------------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.current_user_is_favorito(uuid);
+
+-- =====================================================================================
+-- PARTE 4: CONCEDER PERMISSÕES
 -- =====================================================================================
 
 GRANT SELECT ON public.vw_vagas_candidaturas TO anon;
 GRANT SELECT ON public.vw_vagas_candidaturas TO authenticated;
 
 -- =====================================================================================
--- PART 4: PERFORMANCE VALIDATION
+-- PARTE 5: VALIDAÇÃO DE PERFORMANCE
 -- =====================================================================================
 
--- After deployment, validate performance with:
+-- Após o deploy, valide a performance com:
 --
--- 1. Test query execution time:
+-- 1. Testar tempo de execução da query:
 --    EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
 --    SELECT * FROM vw_vagas_candidaturas
 --    WHERE vaga_status = 'aberta'
 --    LIMIT 100;
 --
---    Expected results:
---    - Execution time: < 5 seconds (down from 30+)
---    - No "Seq Scan" on: candidaturas, vagas_salvas, checkin_checkout
---    - "Index Scan" or "Index Only Scan" instead
---    - Shared buffers hit ratio: > 95%
+--    Resultados esperados:
+--    - Tempo de execução: < 5 segundos (redução de 30+)
+--    - Nenhum "Seq Scan" em: candidaturas, vagas_salvas, checkin_checkout
+--    - "Index Scan" ou "Index Only Scan" no lugar
+--    - Taxa de acerto de buffers compartilhados: > 95%
 --
--- 2. Verify index usage:
+-- 2. Verificar uso dos índices:
 --    SELECT
 --      schemaname, tablename, indexname,
 --      idx_scan, idx_tup_read, idx_tup_fetch
@@ -385,32 +388,32 @@ GRANT SELECT ON public.vw_vagas_candidaturas TO authenticated;
 --      'idx_vagas_salvas_vaga_medico',
 --      'idx_checkin_checkout_vaga_medico',
 --      'idx_candidaturas_special_medico',
---      'idx_candidaturas_precadastro_union',
---      'idx_medicos_favoritos_grupo_medico'
+--      'idx_candidaturas_precadastro_union'
 --    )
 --    ORDER BY idx_scan DESC;
 --
---    Expected: idx_scan > 0 for all indexes after some queries
+--    Esperado: idx_scan > 0 para todos os índices após algumas queries
 --
--- 3. Check view definition was updated:
+-- 3. Verificar se a definição da view foi atualizada:
 --    SELECT pg_get_viewdef('vw_vagas_candidaturas', true);
 --
---    Verify: Contains "UNION ALL" (not "UNION")
---            Contains "candidatura_counts" (not "count_candidaturas_total")
---            Does NOT contain "DISTINCT" in inner query
+--    Verificar: Contém "UNION ALL" (não "UNION")
+--               Contém "candidatura_counts" (não "count_candidaturas_total")
+--               NÃO contém "DISTINCT" na query interna
+--               NÃO contém coluna "medico_favorito"
+--               NÃO contém chamada de função "current_user_is_favorito"
 --
 -- =====================================================================================
--- ROLLBACK PLAN (if issues occur)
+-- PLANO DE ROLLBACK (se problemas ocorrerem)
 -- =====================================================================================
 --
--- To rollback this migration:
+-- Para fazer rollback desta migration:
 --
--- 1. Restore original view from 20251117000011_views_complete.sql
--- 2. Drop the 5 new indexes:
+-- 1. Restaurar view original de 20251117000011_views_complete.sql
+-- 2. Remover os 4 novos índices:
 --    DROP INDEX IF EXISTS idx_vagas_salvas_vaga_medico;
 --    DROP INDEX IF EXISTS idx_checkin_checkout_vaga_medico;
 --    DROP INDEX IF EXISTS idx_candidaturas_special_medico;
 --    DROP INDEX IF EXISTS idx_candidaturas_precadastro_union;
---    DROP INDEX IF EXISTS idx_medicos_favoritos_grupo_medico;
 --
 -- =====================================================================================

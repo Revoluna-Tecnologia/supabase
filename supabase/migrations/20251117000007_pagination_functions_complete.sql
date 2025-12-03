@@ -195,8 +195,6 @@ SELECT COALESCE(
         v.candidatura_createdate,
         'vaga_salva',
         v.vaga_salva,
-        'medico_favorito',
-        v.medico_favorito,
         'vaga',
         jsonb_build_object(
           'vaga_id',
@@ -724,8 +722,6 @@ RETURN QUERY WITH vagas_agrupadas AS (
           v.candidatura_createdate,
           'vaga_salva',
           v.vaga_salva,
-          'medico_favorito',
-          v.medico_favorito,
           'medico_id',
           v.medico_id,
           'medico_primeiro_nome',
