@@ -344,13 +344,13 @@ DECLARE
     deleted_count INTEGER;
 BEGIN
     -- Verificar se pelo menos um UUID foi fornecido
-    IF array_length(vagas_ids, 1) IS NULL OR array_length(vagas_ids, 1) = 0 THEN
+    IF array_length(vaga_ids, 1) IS NULL OR array_length(vaga_ids, 1) = 0 THEN
         RETURN 0;
     END IF;
 
     -- Excluir as vagas e contar quantas foram excluídas
     DELETE FROM public.vagas  -- Adicionado schema
-    WHERE id = ANY(vagas_ids);  -- Corrigido: vagas_id → id
+    WHERE id = ANY(vaga_ids);  -- Corrigido: vagas_id → id
 
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
 
