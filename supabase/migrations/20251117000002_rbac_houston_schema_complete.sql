@@ -685,12 +685,28 @@ $$ language plpgsql
 ALTER TABLE houston.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE houston.role_permissions ENABLE ROW LEVEL SECURITY;
 
--- Policy para permitir leitura de role_permissions (já existe policy para user_roles acima)
-CREATE POLICY "Allow authenticated to read role permissions"
-ON houston.role_permissions
+-- Baseado em: 38-50-RBAC-Refatoracao/20251110152610_fix_policies_after_enum_update.sql
+
+CREATE POLICY user_role_read_policy ON houston.user_roles
 AS PERMISSIVE FOR SELECT
 TO authenticated
-USING (true);
+USING (houston.authorize_simple('roles.select'::houston.app_permission));
+
+CREATE POLICY user_role_insert_policy ON houston.user_roles
+AS PERMISSIVE FOR INSERT
+TO authenticated
+WITH CHECK (houston.authorize_simple('roles.insert'::houston.app_permission));
+
+CREATE POLICY user_role_update_policy ON houston.user_roles
+AS PERMISSIVE FOR UPDATE
+TO authenticated
+USING (houston.authorize_simple('roles.update'::houston.app_permission))
+WITH CHECK (houston.authorize_simple('roles.update'::houston.app_permission));
+
+CREATE POLICY user_role_delete_policy ON houston.user_roles
+AS PERMISSIVE FOR DELETE
+TO authenticated
+USING (houston.authorize_simple('roles.delete'::houston.app_permission));
 
 -- =====================================================
 -- POPULAÇÃO DA TABELA USER_ROLES COM ESCALISTAS EXISTENTES
