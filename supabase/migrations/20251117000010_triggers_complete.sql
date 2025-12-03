@@ -20,6 +20,7 @@
 CREATE OR REPLACE FUNCTION public.atualizar_vagas_status()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 BEGIN
     -- Atualiza o status da vaga para 'fechada' quando a candidatura for 'APROVADO'
