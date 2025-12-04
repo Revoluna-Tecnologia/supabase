@@ -71,10 +71,10 @@ BEGIN
       '(00) 00000-0000'
     );
 
-    -- Adicionar prefixo 55 se não existir
-    IF user_phone IS NOT NULL AND user_phone NOT LIKE '55%' THEN
-      user_phone := '55' || user_phone;
-    END IF;
+    -- -- Adicionar prefixo 55 se não existir
+    -- IF user_phone IS NOT NULL AND user_phone NOT LIKE '55%' THEN
+    --   user_phone := '55' || user_phone;
+    -- END IF;
 
     -- Extrair group_id de forma segura (suporta formato aninhado e direto)
     BEGIN
