@@ -153,7 +153,7 @@ insert into houston.role_permissions (role, permission) values
     ('administrador', 'relatorios.select'),
 
     -- ========================================
-    -- MODERADOR (26 permissões)
+    -- MODERADOR (27 permissões)
     -- ========================================
     ('moderador', 'vagas.select'),
     ('moderador', 'vagas.insert'),
@@ -170,6 +170,7 @@ insert into houston.role_permissions (role, permission) values
     ('moderador', 'grupos.select'),
     ('moderador', 'grupos.update'),
     ('moderador', 'roles.select'),
+    ('moderador', 'roles.update'),
     ('moderador', 'candidaturas.update'),
     ('moderador', 'candidaturas.delete'),
     ('moderador', 'candidaturas.insert'),
@@ -215,7 +216,7 @@ insert into houston.role_permissions (role, permission) values
     ('gestor', 'relatorios.select'),
 
     -- ========================================
-    -- COORDENADOR (19 permissões)
+    -- COORDENADOR (21 permissões)
     -- ========================================
     ('coordenador', 'vagas.select'),
     ('coordenador', 'vagas.insert'),
@@ -229,7 +230,9 @@ insert into houston.role_permissions (role, permission) values
     ('coordenador', 'medicos.insert'),
     ('coordenador', 'medicos.update'),
     ('coordenador', 'medicos.delete'),
+    ('coordenador', 'grupos.select'),
     ('coordenador', 'roles.select'),
+    ('coordenador', 'roles.update'),
     ('coordenador', 'candidaturas.select'),
     ('coordenador', 'candidaturas.insert'),
     ('coordenador', 'candidaturas.update'),
