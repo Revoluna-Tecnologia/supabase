@@ -173,37 +173,37 @@ begin
     end if;
   end if;
 
-  -- REGRA 5: Verificar HOSPITAL_ID (se fornecido)
-  if hospital_id IS NOT NULL then
-    if cardinality(user_complete_data.hospital_ids) = 0 then
-      -- Array vazio = sem restrição de hospital
-      has_permission := true;
-    else
-      -- Verificar se o hospital solicitado está na lista do usuário
+  -- REGRA 5: Verificar HOSPITAL_ID
+  -- Se hospital_ids está VAZIO: usuário pode ver TODOS os hospitais (sem filtro)
+  -- Se hospital_ids está PREENCHIDO: usar como filtro (só pode ver esses hospitais)
+  if cardinality(user_complete_data.hospital_ids) > 0 then
+    -- Usuário tem restrição de hospital: verificar se tem acesso ao hospital solicitado
+    if hospital_id IS NOT NULL then
+      -- hospital_id foi fornecido: verificar se está na lista permitida
       has_permission := hospital_id = ANY(user_complete_data.hospital_ids);
+      if NOT has_permission then
+        return false;
+      end if;
     end if;
-
-    -- Se falhou na verificação de hospital, negar acesso
-    if NOT has_permission then
-      return false;
-    end if;
+    -- Se hospital_id é NULL, não há verificação necessária (queries sem filtro de hospital)
   end if;
+  -- Se hospital_ids está vazio, não há restrição: usuário pode ver todos os hospitais
 
-  -- REGRA 6: Verificar SETOR_ID (se fornecido)
-  if setor_id IS NOT NULL then
-    if cardinality(user_complete_data.setor_ids) = 0 then
-      -- Array vazio = sem restrição de setor
-      has_permission := true;
-    else
-      -- Verificar se o setor solicitado está na lista do usuário
+  -- REGRA 6: Verificar SETOR_ID
+  -- Se setor_ids está VAZIO: usuário pode ver TODOS os setores (sem filtro)
+  -- Se setor_ids está PREENCHIDO: usar como filtro (só pode ver esses setores)
+  if cardinality(user_complete_data.setor_ids) > 0 then
+    -- Usuário tem restrição de setor: verificar se tem acesso ao setor solicitado
+    if setor_id IS NOT NULL then
+      -- setor_id foi fornecido: verificar se está na lista permitida
       has_permission := setor_id = ANY(user_complete_data.setor_ids);
+      if NOT has_permission then
+        return false;
+      end if;
     end if;
-
-    -- Se falhou na verificação de setor, negar acesso
-    if NOT has_permission then
-      return false;
-    end if;
+    -- Se setor_id é NULL, não há verificação necessária (queries sem filtro de setor)
   end if;
+  -- Se setor_ids está vazio, não há restrição: usuário pode ver todos os setores
 
   -- Se passou por todas as verificações, autorizar acesso
   return true;
