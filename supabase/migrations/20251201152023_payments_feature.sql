@@ -16,11 +16,6 @@ ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'pagamentos.insert';
 ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'pagamentos.update';
 ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'pagamentos.delete';
 
--- Checkin/Checkout permissions
-ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.select';
-ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.insert';
-ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.update';
-ALTER TYPE houston.app_permission ADD VALUE IF NOT EXISTS 'checkin_checkout.delete';
 
 -- IMPORTANTE: Commit para que os novos valores do ENUM fiquem disponíveis
 COMMIT;
@@ -34,11 +29,7 @@ INSERT INTO houston.role_permissions (role, permission) VALUES
   ('administrador', 'pagamentos.select'),
   ('administrador', 'pagamentos.insert'),
   ('administrador', 'pagamentos.update'),
-  ('administrador', 'pagamentos.delete'),
-  ('administrador', 'checkin_checkout.select'),
-  ('administrador', 'checkin_checkout.insert'),
-  ('administrador', 'checkin_checkout.update'),
-  ('administrador', 'checkin_checkout.delete')
+  ('administrador', 'pagamentos.delete')
 ON CONFLICT DO NOTHING;
 
 -- Moderador: ALL permissions (SELECT, INSERT, UPDATE, DELETE)
@@ -46,11 +37,7 @@ INSERT INTO houston.role_permissions (role, permission) VALUES
   ('moderador', 'pagamentos.select'),
   ('moderador', 'pagamentos.insert'),
   ('moderador', 'pagamentos.update'),
-  ('moderador', 'pagamentos.delete'),
-  ('moderador', 'checkin_checkout.select'),
-  ('moderador', 'checkin_checkout.insert'),
-  ('moderador', 'checkin_checkout.update'),
-  ('moderador', 'checkin_checkout.delete')
+  ('moderador', 'pagamentos.delete')
 ON CONFLICT DO NOTHING;
 
 -- Gestor: SELECT, INSERT, UPDATE, DELETE (com UPDATE para autorizar pagamentos e bypass de checkin/checkout retroativo)
@@ -71,9 +58,7 @@ ON CONFLICT DO NOTHING;
 -- Escalista: SELECT, INSERT only (NO UPDATE, NO DELETE)
 INSERT INTO houston.role_permissions (role, permission) VALUES
   ('escalista', 'pagamentos.select'),
-  ('escalista', 'pagamentos.insert'),
-  ('escalista', 'checkin_checkout.select'),
-  ('escalista', 'checkin_checkout.insert')
+  ('escalista', 'pagamentos.insert')
 ON CONFLICT DO NOTHING;
 
 -- =========================================================================
@@ -325,7 +310,7 @@ DROP POLICY IF EXISTS "checkin_checkout_insert_policy" ON public.checkin_checkou
 DROP POLICY IF EXISTS "checkin_checkout_update_policy" ON public.checkin_checkout;
 DROP POLICY IF EXISTS "checkin_checkout_delete_policy" ON public.checkin_checkout;
 
--- SELECT: Users with checkin_checkout.select permission (filtered by hospital/setor/grupo)
+
 CREATE POLICY "checkin_checkout_select_policy" ON public.checkin_checkout
   FOR SELECT
   USING (
@@ -340,12 +325,12 @@ CREATE POLICY "checkin_checkout_select_policy" ON public.checkin_checkout
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = checkin_checkout.vaga_id
-        AND houston.authorize('checkin_checkout.select'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+        AND houston.authorize('pagamentos.select'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   );
 
--- INSERT: Users with checkin_checkout.insert permission
+
 CREATE POLICY "checkin_checkout_insert_policy" ON public.checkin_checkout
   FOR INSERT
   WITH CHECK (
@@ -360,12 +345,12 @@ CREATE POLICY "checkin_checkout_insert_policy" ON public.checkin_checkout
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = checkin_checkout.vaga_id
-        AND houston.authorize('checkin_checkout.insert'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+        AND houston.authorize('pagamentos.insert'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   );
 
--- UPDATE: ONLY administrador and moderador (users with checkin_checkout.update permission)
+
 CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
   FOR UPDATE
   USING (
@@ -380,7 +365,7 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = checkin_checkout.vaga_id
-        AND houston.authorize('checkin_checkout.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+        AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   )
@@ -394,19 +379,19 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
       EXISTS (
         SELECT 1 FROM vagas v
         WHERE v.id = checkin_checkout.vaga_id
-        AND houston.authorize('checkin_checkout.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+        AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   );
 
--- DELETE: Users with checkin_checkout.delete permission (admin, moderador, gestor, coordenador)
+
 CREATE POLICY "checkin_checkout_delete_policy" ON public.checkin_checkout
   FOR DELETE
   USING (
     EXISTS (
       SELECT 1 FROM vagas v
       WHERE v.id = checkin_checkout.vaga_id
-      AND houston.authorize('checkin_checkout.delete'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+      AND houston.authorize('pagamentos.delete'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
     )
   );
 
@@ -444,7 +429,7 @@ BEGIN
     END IF;
 
     -- Verificar se usuário tem permissão de editar check-in/checkout (admin/moderador)
-    SELECT houston.authorize('checkin_checkout.update') INTO is_admin_or_moderator;
+    SELECT houston.authorize('pagamentos.update') INTO is_admin_or_moderator;
 
     -- Buscar informações da vaga
     SELECT v.data, v.hora_inicio, v.hora_fim
@@ -543,7 +528,7 @@ BEGIN
     END IF;
 
     -- Verificar se usuário tem permissão de editar check-in/checkout (admin/moderador)
-    SELECT houston.authorize('checkin_checkout.update') INTO is_admin_or_moderator;
+    SELECT houston.authorize('pagamentos.update') INTO is_admin_or_moderator;
 
     -- Buscar informações da vaga
     SELECT v.data, v.hora_inicio, v.hora_fim
