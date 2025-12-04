@@ -40,7 +40,7 @@ begin
   -- OTIMIZAÇÃO: Tentar ler role e permissions do JWT primeiro
   -- JWT já contém user_role e permissions[] (adicionados pelo custom_access_token_hook)
   begin
-    jwt_claims := auth.jwt();
+    jwt_claims := (SELECT auth.jwt());
     jwt_role := jwt_claims->>'user_role';
     jwt_permissions := jwt_claims->'permissions';
 
@@ -118,7 +118,7 @@ begin
   -- OTIMIZAÇÃO: Short-circuit para administradores via JWT (evita TODAS as queries)
   -- Se JWT indica que usuário é admin, retornar true imediatamente
   begin
-    jwt_role := auth.jwt()->>'user_role';
+    jwt_role := (SELECT auth.jwt())->>'user_role';
     if jwt_role = 'administrador' then
       return true;
     end if;
@@ -130,7 +130,7 @@ begin
   -- Buscar dados completos do usuário autenticado
   -- (agora com 1 query em vez de 2, graças ao JWT)
   SELECT * INTO user_complete_data
-  FROM houston.get_user_complete_data(auth.uid())
+  FROM houston.get_user_complete_data((SELECT auth.uid()))
   LIMIT 1;
 
   -- Se usuário não encontrado ou sem dados, negar acesso

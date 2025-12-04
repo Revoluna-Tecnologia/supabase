@@ -245,70 +245,82 @@ END $$;
 
 -- SELECT: Users with pagamentos.select permission (filtered by hospital/setor/grupo)
 CREATE POLICY "pagamentos_select_policy" ON public.pagamentos
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (
     (
-      -- Medico can see their own payments
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
-    OR
-    (
-      -- Houston users with permission
+    OR (
       EXISTS (
-        SELECT 1 FROM vagas v
+        SELECT 1 FROM public.vagas v
         WHERE v.id = pagamentos.vaga_id
-        AND houston.authorize('pagamentos.select'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize('pagamentos.select'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   );
 
 -- INSERT: Users with pagamentos.insert permission
 CREATE POLICY "pagamentos_insert_policy" ON public.pagamentos
-  FOR INSERT
+  FOR INSERT TO authenticated
   WITH CHECK (
     (
-      -- Medico can insert their own payments
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
-    OR
-    (
-      -- Houston users with permission
+    OR (
       EXISTS (
-        SELECT 1 FROM vagas v
+        SELECT 1 FROM public.vagas v
         WHERE v.id = pagamentos.vaga_id
-        AND houston.authorize('pagamentos.insert'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+          AND houston.authorize('pagamentos.insert'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
       )
     )
   );
 
 -- UPDATE: ONLY administrador and moderador (users with pagamentos.update permission)
 CREATE POLICY "pagamentos_update_policy" ON public.pagamentos
-  FOR UPDATE
+  FOR UPDATE TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM vagas v
-      WHERE v.id = pagamentos.vaga_id
-      AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+    (
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
+    )
+    OR (
+      EXISTS (
+        SELECT 1 FROM public.vagas v
+        WHERE v.id = pagamentos.vaga_id
+          AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+      )
     )
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM vagas v
-      WHERE v.id = pagamentos.vaga_id
-      AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+    (
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
+    )
+    OR (
+      EXISTS (
+        SELECT 1 FROM public.vagas v
+        WHERE v.id = pagamentos.vaga_id
+          AND houston.authorize('pagamentos.update'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+      )
     )
   );
 
 -- DELETE: Users with pagamentos.delete permission (admin, moderador, gestor, coordenador)
 CREATE POLICY "pagamentos_delete_policy" ON public.pagamentos
-  FOR DELETE
+  FOR DELETE TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM vagas v
-      WHERE v.id = pagamentos.vaga_id
-      AND houston.authorize('pagamentos.delete'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+    (
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
+    )
+    OR (
+      EXISTS (
+        SELECT 1 FROM public.vagas v
+        WHERE v.id = pagamentos.vaga_id
+          AND houston.authorize('pagamentos.delete'::houston.app_permission, v.hospital_id, v.setor_id, v.grupo_id)
+      )
     )
   );
 
@@ -328,8 +340,8 @@ CREATE POLICY "checkin_checkout_select_policy" ON public.checkin_checkout
   USING (
     (
       -- Medico can see their own checkins
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR
     (
@@ -348,8 +360,8 @@ CREATE POLICY "checkin_checkout_insert_policy" ON public.checkin_checkout
   WITH CHECK (
     (
       -- Medico can insert their own checkins
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR
     (
@@ -368,8 +380,8 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
   USING (
     (
       -- Medico can update their own checkins
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR
     (
@@ -383,8 +395,8 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
   )
   WITH CHECK (
     (
-      (EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR
     (

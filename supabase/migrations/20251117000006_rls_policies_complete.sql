@@ -18,6 +18,11 @@
 -- ============================================================================
 -- TABELA: medicos
 -- ============================================================================
+DROP POLICY IF EXISTS "Enable escalista and astronauta users update medicos data" ON public.medicos;
+DROP POLICY IF EXISTS "Enable escalista users read all data" ON public.medicos;
+DROP POLICY IF EXISTS "Enable medico users update their own data only" ON public.medicos;
+DROP POLICY IF EXISTS "Enable medicos users insert their own data only" ON public.medicos;
+DROP POLICY IF EXISTS "Enable medicos users to view their own data only" ON public.medicos;
 DROP POLICY IF EXISTS "medicos_delete_policy" ON public.medicos;
 DROP POLICY IF EXISTS "medicos_insert_policy" ON public.medicos;
 DROP POLICY IF EXISTS "medicos_select_policy" ON public.medicos;
@@ -26,33 +31,33 @@ DROP POLICY IF EXISTS "medicos_update_policy" ON public.medicos;
 CREATE POLICY "medicos_delete_policy" ON public.medicos
   FOR DELETE TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = id
   );
 
 CREATE POLICY "medicos_insert_policy" ON public.medicos
   FOR INSERT TO authenticated
   WITH CHECK (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = id
   );
 
 CREATE POLICY "medicos_select_policy" ON public.medicos
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR houston.authorize_simple('medicos.select'::houston.app_permission)
   );
 
 CREATE POLICY "medicos_update_policy" ON public.medicos
   FOR UPDATE TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = id
   )
   WITH CHECK (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = id
   );
 
 -- ============================================================================
@@ -82,7 +87,7 @@ CREATE POLICY "medicos_precadastro_insert_policy" ON public.medicos_precadastro
 CREATE POLICY "medicos_precadastro_select_policy" ON public.medicos_precadastro
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR houston.authorize_simple('medicos.select'::houston.app_permission)
   );
 
@@ -188,7 +193,7 @@ CREATE POLICY "medicos_favoritos_insert_policy" ON public.medicos_favoritos
 
 CREATE POLICY "medicos_favoritos_select_policy" ON public.medicos_favoritos
   FOR SELECT TO authenticated
-  USING ((EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+  USING ((EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR
     houston.authorize('medicos.select'::houston.app_permission, NULL, NULL, grupo_id)
   );
@@ -205,6 +210,7 @@ CREATE POLICY "medicos_favoritos_update_policy" ON public.medicos_favoritos
 -- ============================================================================
 -- TABELA: escalistas
 -- ============================================================================
+DROP POLICY IF EXISTS "escalista_policy" ON public.escalistas; -- Política ALL duplicada
 DROP POLICY IF EXISTS "escalista_select_houston_rbac" ON public.escalistas;
 DROP POLICY IF EXISTS "escalistas_select_policy" ON public.escalistas;
 DROP POLICY IF EXISTS "escalista_update_houston_rbac" ON public.escalistas;
@@ -217,7 +223,7 @@ DROP POLICY IF EXISTS "escalistas_delete_policy" ON public.escalistas;
 CREATE POLICY "escalistas_select_policy" ON public.escalistas
   FOR SELECT TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
+    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
     OR houston.authorize('membros.select'::houston.app_permission, NULL::uuid, NULL::uuid, grupo_id)
   );
 
@@ -256,7 +262,7 @@ DROP POLICY IF EXISTS "grupos_delete_policy" ON public.grupos;
 CREATE POLICY "grupos_select_policy" ON public.grupos
   FOR SELECT TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
+    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
     OR houston.group_authorization('grupos.select'::houston.app_permission, id)
   );
 
@@ -308,7 +314,7 @@ CREATE POLICY "hospitais_insert_policy" ON public.hospitais
 CREATE POLICY "hospitais_select_policy" ON public.hospitais
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR houston.authorize('hospitais.update'::houston.app_permission, id, NULL, NULL)
   );
 
@@ -344,8 +350,8 @@ CREATE POLICY "vagas_insert_policy" ON public.vagas
 CREATE POLICY "vagas_select_policy" ON public.vagas
   FOR SELECT TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-    OR houston.vaga_in_user_scope(grupo_id, hospital_id)
+    EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
+    OR houston.authorize('vagas.select'::houston.app_permission, hospital_id, setor_id, grupo_id)
   );
 
 CREATE POLICY "vagas_update_policy" ON public.vagas
@@ -370,8 +376,8 @@ CREATE POLICY "candidaturas_delete_policy" ON public.candidaturas
   USING (
     -- REVOLUNA: Apenas próprias candidaturas
     (
-      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() IN (medico_id, medico_precadastro_id)
+      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
+      AND (SELECT auth.uid()) IN (medico_id, medico_precadastro_id)
     )
     OR
     -- HOUSTON: Por grupo/hospital/setor
@@ -392,8 +398,8 @@ CREATE POLICY "candidaturas_insert_policy" ON public.candidaturas
   WITH CHECK (
     -- REVOLUNA: Apenas próprias candidaturas
     (
-      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() IN (medico_id, medico_precadastro_id)
+      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
+      AND (SELECT auth.uid()) IN (medico_id, medico_precadastro_id)
     )
     OR
     -- HOUSTON: Por grupo/hospital/setor
@@ -414,9 +420,9 @@ CREATE POLICY "candidaturas_select_policy" ON public.candidaturas
   USING (
     -- REVOLUNA: Próprias + colegas
     (
-      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
+      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
       AND (
-        auth.uid() IN (medico_id, medico_precadastro_id)
+        (SELECT auth.uid()) IN (medico_id, medico_precadastro_id)
         OR pode_ver_candidatura_colega(id)
       )
     )
@@ -439,8 +445,8 @@ CREATE POLICY "candidaturas_update_policy" ON public.candidaturas
   USING (
     -- REVOLUNA: Apenas próprias candidaturas
     (
-      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() IN (medico_id, medico_precadastro_id)
+      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
+      AND (SELECT auth.uid()) IN (medico_id, medico_precadastro_id)
     )
     OR
     -- HOUSTON: Por grupo/hospital/setor
@@ -458,8 +464,8 @@ CREATE POLICY "candidaturas_update_policy" ON public.candidaturas
   WITH CHECK (
     -- REVOLUNA: Apenas próprias candidaturas
     (
-      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = auth.uid())
-      AND auth.uid() IN (medico_id, medico_precadastro_id)
+      EXISTS (SELECT 1 FROM user_profile WHERE user_profile.id = (SELECT auth.uid()))
+      AND (SELECT auth.uid()) IN (medico_id, medico_precadastro_id)
     )
     OR
     -- HOUSTON: Por grupo/hospital/setor
@@ -489,8 +495,8 @@ CREATE POLICY "checkin_checkout_delete_policy" ON public.checkin_checkout
   FOR DELETE TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -505,8 +511,8 @@ CREATE POLICY "checkin_checkout_insert_policy" ON public.checkin_checkout
   FOR INSERT TO authenticated
   WITH CHECK (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -521,8 +527,8 @@ CREATE POLICY "checkin_checkout_select_policy" ON public.checkin_checkout
   FOR SELECT TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -537,8 +543,8 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
   FOR UPDATE TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -550,8 +556,8 @@ CREATE POLICY "checkin_checkout_update_policy" ON public.checkin_checkout
   )
   WITH CHECK (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -593,7 +599,7 @@ CREATE POLICY "grades_insert_policy" ON public.grades
 CREATE POLICY "grades_select_policy" ON public.grades
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR houston.authorize('vagas.select'::houston.app_permission, hospital_id, setor_id, grupo_id)
   );
 
@@ -620,8 +626,8 @@ CREATE POLICY "pagamentos_delete_policy" ON public.pagamentos
   FOR DELETE TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND (auth.uid() = medico_id OR auth.uid() = medicos_id)
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
     OR (
       EXISTS (
@@ -636,8 +642,8 @@ CREATE POLICY "pagamentos_insert_policy" ON public.pagamentos
   FOR INSERT TO authenticated
   WITH CHECK (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND (auth.uid() = medico_id OR auth.uid() = medicos_id)
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
     OR (
       EXISTS (
@@ -652,8 +658,8 @@ CREATE POLICY "pagamentos_select_policy" ON public.pagamentos
   FOR SELECT TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND (auth.uid() = medico_id OR auth.uid() = medicos_id)
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
     OR (
       EXISTS (
@@ -668,8 +674,8 @@ CREATE POLICY "pagamentos_update_policy" ON public.pagamentos
   FOR UPDATE TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND (auth.uid() = medico_id OR auth.uid() = medicos_id)
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
     OR (
       EXISTS (
@@ -681,8 +687,8 @@ CREATE POLICY "pagamentos_update_policy" ON public.pagamentos
   )
   WITH CHECK (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND (auth.uid() = medico_id OR auth.uid() = medicos_id)
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (auth.uid() = medico_id OR (SELECT auth.uid()) = medicos_id)
     )
     OR (
       EXISTS (
@@ -698,6 +704,7 @@ CREATE POLICY "pagamentos_update_policy" ON public.pagamentos
 -- ============================================================================
 DROP POLICY IF EXISTS "Enable full access to astronauta users" ON public.vagas_beneficios;
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.vagas_beneficios;
+DROP POLICY IF EXISTS "vagas_beneficio_escalista_policy" ON public.vagas_beneficios; -- Política ALL duplicada
 DROP POLICY IF EXISTS "vagas_beneficios_escalista_policy" ON public.vagas_beneficios;
 DROP POLICY IF EXISTS "vagas_beneficios_delete_policy" ON public.vagas_beneficios;
 DROP POLICY IF EXISTS "vagas_beneficios_insert_policy" ON public.vagas_beneficios;
@@ -727,7 +734,7 @@ CREATE POLICY "vagas_beneficios_insert_policy" ON public.vagas_beneficios
 CREATE POLICY "vagas_beneficios_select_policy" ON public.vagas_beneficios
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR EXISTS (
       SELECT 1 FROM public.vagas v
       WHERE v.id = vagas_beneficios.vaga_id
@@ -784,7 +791,7 @@ CREATE POLICY "vagas_recorrencias_insert_policy" ON public.vagas_recorrencias
 CREATE POLICY "vagas_recorrencias_select_policy" ON public.vagas_recorrencias
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR EXISTS (
       SELECT 1 FROM public.vagas v
       WHERE v.recorrencia_id = vagas_recorrencias.id
@@ -817,6 +824,7 @@ CREATE POLICY "vagas_recorrencias_update_policy" ON public.vagas_recorrencias
 -- ============================================================================
 DROP POLICY IF EXISTS "Enable full access to astronauta users" ON public.vagas_requisitos;
 DROP POLICY IF EXISTS "Enable read for authenticated users" ON public.vagas_requisitos;
+DROP POLICY IF EXISTS "vagas_requisito_escalista_policy" ON public.vagas_requisitos; -- Política ALL duplicada
 DROP POLICY IF EXISTS "vagas_requisitos_escalista_policy" ON public.vagas_requisitos;
 DROP POLICY IF EXISTS "vagas_requisitos_delete_policy" ON public.vagas_requisitos;
 DROP POLICY IF EXISTS "vagas_requisitos_insert_policy" ON public.vagas_requisitos;
@@ -846,7 +854,7 @@ CREATE POLICY "vagas_requisitos_insert_policy" ON public.vagas_requisitos
 CREATE POLICY "vagas_requisitos_select_policy" ON public.vagas_requisitos
   FOR SELECT TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
     OR EXISTS (
       SELECT 1 FROM public.vagas v
       WHERE v.id = vagas_requisitos.vaga_id
@@ -884,23 +892,23 @@ DROP POLICY IF EXISTS "vagas_salvas_update_policy" ON public.vagas_salvas;
 CREATE POLICY "vagas_salvas_delete_policy" ON public.vagas_salvas
   FOR DELETE TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = medico_id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = medico_id
   );
 
 CREATE POLICY "vagas_salvas_insert_policy" ON public.vagas_salvas
   FOR INSERT TO authenticated
   WITH CHECK (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = medico_id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = medico_id
   );
 
 CREATE POLICY "vagas_salvas_select_policy" ON public.vagas_salvas
   FOR SELECT TO authenticated
   USING (
     (
-      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-      AND auth.uid() = medico_id
+      (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+      AND (SELECT auth.uid()) = medico_id
     )
     OR (
       EXISTS (
@@ -914,12 +922,12 @@ CREATE POLICY "vagas_salvas_select_policy" ON public.vagas_salvas
 CREATE POLICY "vagas_salvas_update_policy" ON public.vagas_salvas
   FOR UPDATE TO authenticated
   USING (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = medico_id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = medico_id
   )
   WITH CHECK (
-    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = auth.uid()))
-    AND auth.uid() = medico_id
+    (EXISTS (SELECT 1 FROM public.user_profile WHERE user_profile.id = (SELECT auth.uid())))
+    AND (SELECT auth.uid()) = medico_id
   );
 
 -- ============================================================================
@@ -1021,10 +1029,10 @@ USING (
   AND houston.authorize('hospitais.delete'::houston.app_permission)
 );
 
--- =====================================================================================
--- BUCKET: carteira-digital
--- Políticas: usuário pode gerenciar sua própria pasta OU ter permissão RBAC
--- =====================================================================================
+  -- =====================================================================================
+  -- BUCKET: carteira-digital
+  -- Políticas: usuário pode gerenciar sua própria pasta OU ter permissão RBAC
+  -- =====================================================================================
 
 CREATE POLICY "carteira_digital_select_public"
 ON storage.objects FOR SELECT
@@ -1037,7 +1045,7 @@ TO authenticated
 WITH CHECK (
   bucket_id = 'carteira-digital'
   AND (
-    (storage.foldername(name))[1] = (auth.uid())::text
+    (storage.foldername(name))[1] = ((SELECT auth.uid()))::text
     OR houston.authorize('medicos.insert'::houston.app_permission)
   )
 );
@@ -1048,7 +1056,7 @@ TO authenticated
 USING (
   bucket_id = 'carteira-digital'
   AND (
-    (storage.foldername(name))[1] = (auth.uid())::text
+    (storage.foldername(name))[1] = ((SELECT auth.uid()))::text
     OR houston.authorize('medicos.delete'::houston.app_permission)
   )
 );
@@ -1063,7 +1071,7 @@ ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (
   bucket_id = 'profilepictures'
-  AND (storage.foldername(name))[1] = (auth.uid())::text
+  AND (storage.foldername(name))[1] = ((SELECT auth.uid()))::text
 );
 
 CREATE POLICY "profilepictures_delete"
@@ -1071,7 +1079,7 @@ ON storage.objects FOR DELETE
 TO authenticated
 USING (
   bucket_id = 'profilepictures'
-  AND (storage.foldername(name))[1] = (auth.uid())::text
+  AND (storage.foldername(name))[1] = ((SELECT auth.uid()))::text
 );
 
 -- =====================================================================================
