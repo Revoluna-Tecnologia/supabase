@@ -44,7 +44,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO houston.role_permissions (role, permission) VALUES
   ('gestor', 'pagamentos.select'),
   ('gestor', 'pagamentos.insert'),
-  ('gestor', 'pagamentos.update'),
+  ('gestor', 'pagamentos.update')
 
 ON CONFLICT DO NOTHING;
 
@@ -52,7 +52,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO houston.role_permissions (role, permission) VALUES
   ('coordenador', 'pagamentos.select'),
   ('coordenador', 'pagamentos.insert'),
-  ('coordenador', 'pagamentos.update'),
+  ('coordenador', 'pagamentos.update')
 ON CONFLICT DO NOTHING;
 
 -- Escalista: SELECT, INSERT only (NO UPDATE, NO DELETE)
