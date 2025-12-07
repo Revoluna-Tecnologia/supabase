@@ -747,12 +747,49 @@ CREATE POLICY "vagas_recorrencias_insert_policy" ON public.vagas_recorrencias
   FOR INSERT TO authenticated
   WITH CHECK (houston.authorize('vagas.insert'::houston.app_permission));
 
--- 6.4 Políticas de HOUSTON.USER_ROLES
+-- =====================================================================================
+-- PARTE 7: Remover Políticas RLS que Usam Funções Wrapper
+-- =====================================================================================
+-- IMPORTANTE: Drop das políticas ANTES de dropar as funções wrapper.
+-- Estas políticas serão recriadas logo depois usando houston.authorize() diretamente.
+-- =====================================================================================
+
+-- 7.1 Políticas de HOUSTON.USER_ROLES (usam authorize_simple)
 DROP POLICY IF EXISTS "user_role_read_policy" ON houston.user_roles;
 DROP POLICY IF EXISTS "user_role_insert_policy" ON houston.user_roles;
 DROP POLICY IF EXISTS "user_role_update_policy" ON houston.user_roles;
 DROP POLICY IF EXISTS "user_role_delete_policy" ON houston.user_roles;
 
+-- 7.2 Políticas de GRUPOS (usam group_authorization)
+DROP POLICY IF EXISTS "grupos_select_policy" ON public.grupos;
+DROP POLICY IF EXISTS "grupos_insert_policy" ON public.grupos;
+DROP POLICY IF EXISTS "grupos_update_policy" ON public.grupos;
+DROP POLICY IF EXISTS "grupos_delete_policy" ON public.grupos;
+
+-- =====================================================================================
+-- PARTE 8: Remover Funções Wrapper Obsoletas
+-- =====================================================================================
+-- IMPORTANTE: Agora que TODAS as políticas que usavam estas funções foram removidas,
+-- podemos dropar as funções com segurança.
+--
+-- Com a consolidação, estas funções não são mais necessárias:
+-- - authorize_simple() era apenas wrapper de authorize(..., NULL, NULL, NULL)
+-- - group_authorization() era apenas wrapper de authorize(..., NULL, NULL, group_id)
+--
+-- Consolidamos tudo em uma única função: houston.authorize()
+-- =====================================================================================
+
+DROP FUNCTION IF EXISTS houston.authorize_simple(houston.app_permission);
+DROP FUNCTION IF EXISTS houston.group_authorization(houston.app_permission, uuid);
+
+-- =====================================================================================
+-- PARTE 9: Recriar Políticas RLS com houston.authorize()
+-- =====================================================================================
+-- Agora que as funções wrapper foram removidas, recriar as políticas usando
+-- houston.authorize() diretamente.
+-- =====================================================================================
+
+-- 9.1 Políticas de HOUSTON.USER_ROLES
 CREATE POLICY "user_role_read_policy" ON houston.user_roles
   AS PERMISSIVE FOR SELECT
   TO authenticated
@@ -774,19 +811,7 @@ CREATE POLICY "user_role_delete_policy" ON houston.user_roles
   TO authenticated
   USING (houston.authorize('roles.delete'::houston.app_permission));
 
--- =====================================================================================
--- PARTE 7: Atualizar Políticas RLS - Substituir group_authorization
--- =====================================================================================
--- Políticas que usavam group_authorization() agora usam authorize() com contexto de grupo.
--- Padrão: group_authorization('perm', id) → authorize('perm', NULL, NULL, id)
--- =====================================================================================
-
--- 7.1 Políticas de GRUPOS
-DROP POLICY IF EXISTS "grupos_select_policy" ON public.grupos;
-DROP POLICY IF EXISTS "grupos_insert_policy" ON public.grupos;
-DROP POLICY IF EXISTS "grupos_update_policy" ON public.grupos;
-DROP POLICY IF EXISTS "grupos_delete_policy" ON public.grupos;
-
+-- 9.2 Políticas de GRUPOS
 CREATE POLICY "grupos_select_policy" ON public.grupos
   FOR SELECT TO authenticated
   USING (
@@ -808,21 +833,7 @@ CREATE POLICY "grupos_delete_policy" ON public.grupos
   USING (houston.authorize('grupos.delete'::houston.app_permission));
 
 -- =====================================================================================
--- PARTE 8: Remover Funções Wrapper Obsoletas
--- =====================================================================================
--- IMPORTANTE: Drop das funções deve vir DEPOIS de atualizar todas as políticas RLS.
--- Com a consolidação, estas funções não são mais necessárias:
--- - authorize_simple() era apenas wrapper de authorize(..., NULL, NULL, NULL)
--- - group_authorization() era apenas wrapper de authorize(..., NULL, NULL, group_id)
---
--- Consolidamos tudo em uma única função: houston.authorize()
--- =====================================================================================
-
-DROP FUNCTION IF EXISTS houston.authorize_simple(houston.app_permission);
-DROP FUNCTION IF EXISTS houston.group_authorization(houston.app_permission, uuid);
-
--- =====================================================================================
--- PARTE 9: Documentação e Comentários Finais
+-- PARTE 10: Documentação e Comentários Finais
 -- =====================================================================================
 
 COMMENT ON FUNCTION houston.authorize IS
