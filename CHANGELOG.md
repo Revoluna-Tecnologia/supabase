@@ -7,6 +7,130 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [2.3.1] - 2024-12-08
+
+### Fixed
+- Correção da função `create_user_from_auth()` que falhava ao criar usuários médicos do app mobile
+  - A função tentava inserir na tabela `user_profile` com colunas inexistentes (`updated_at`)
+  - Corrigido para usar apenas colunas válidas: `id`, `created_at`, `role`
+- Simplificação da política RLS `candidaturas_select_policy` para médicos
+  - Removidas verificações desnecessárias que causavam complexidade excessiva
+  - Otimizada função `pode_ver_candidatura_colega()` para melhor performance
+- Padronização de colunas na view `vw_vagas_abertas` para manter consistência com outras views
+  - Renomeadas colunas para padrão snake_case: `periodo_id`, `tipos_vaga_id`, `formarecebimento_id`
+
+### Changed
+- Role padrão de usuários do app mobile alterado de `'medico'` para `'signup'` na criação inicial
+
+### Removed
+- Função obsoleta `pode_ver_candidatura_colega_debug()` (usada apenas para debugging)
+
+### Migrations
+Total de 3 migrações nesta versão:
+1. `20251208201250` - Correção da criação de usuários médicos
+2. `20251208211342` - Simplificação da política RLS de candidaturas
+3. `20251208212537` - Padronização de colunas na view vw_vagas_abertas
+
+---
+
+## [2.3.0] - 2024-12-08
+
+### Added
+- Enriquecimento do JWT com `grupo_ids` para filtragem multi-tenant nas API routes
+- UUIDs especiais do sistema para rastreabilidade de operações automáticas:
+  - `aaaaaaaa-0000-aaaa-eeee-000000000001` → Vaga Expirada (cron job)
+  - `aaaaaaaa-0000-aa00-0eee-000000000002` → Auto Reprovação (trigger)
+  - `aaaaaaaa-0000-aaaa-cccc-000000000003` → Vaga Cancelada (API route)
+- Coluna `grupo_id` adicionada às views `vw_folha_pagamento` e `vw_plantoes_pagamentos`
+- Nova view `vw_plantoes_pagamentos` com informações completas de check-in/checkout e pagamentos
+
+### Changed
+- **Arquitetura RLS para API Routes:** Migração de RLS complexo para filtragem via JWT
+  - Políticas RLS simplificadas removendo chamadas a `houston.authorize()` em tabelas principais
+  - Houston Web agora usa service_role via API routes (bypassa RLS)
+  - Mobile App mantém RLS simplificado baseado em `user_profile`
+- **Padronização de Nomenclatura:**
+  - Renomeada coluna `houston.user_roles.group_ids` → `grupo_ids` (padrão português)
+  - Renomeadas colunas na view `vw_vagas_candidaturas` para snake_case consistente:
+    - `vaga_periodo` → `periodo_id`
+    - `vaga_tipo` → `tipos_vaga_id`
+    - `vaga_formarecebimento` → `forma_recebimento_id`
+- **Consolidação de Funções de Autorização:**
+  - Unificação em uma única função: `houston.authorize()`
+  - Removidas funções wrapper: `authorize_simple()` e `group_authorization()`
+- Padronização de `updated_by` de TEXT para UUID em tabelas `candidaturas` e `vagas`
+- Atualização das funções paginadas (`get_vagas_paginated`, `get_applications_paginated`) para usar novos nomes de colunas
+- Triggers de check-in/checkout atualizados para suportar operações via service_role
+
+### Fixed
+- Vulnerabilidade na tabela `houston.user_roles` - política RLS permitia leitura não autorizada
+- Remoção de política de acesso público ao bucket de documentos médicos
+- Nome da coluna `grupo_ids` na função trigger de criação de usuários
+- Ordem de execução das migrações de padronização da função de autorização
+
+### Removed
+- Trigger obsoleto `vagas_1_reprovar_candidaturas_ao_cancelar` (lógica movida para API routes)
+- Função `atualizar_candidaturas_vaga_cancelada()` (substituída por cancelamento explícito via API)
+- Funções wrapper redundantes: `houston.authorize_simple()` e `houston.group_authorization()`
+
+### Performance
+- **Queries de 8s+ reduzidas para ~100ms** com migração de RLS complexo para filtragem JWT
+- Otimização de políticas RLS utilizando short-circuit para administradores via JWT
+- Redução de overhead com consolidação de 3 funções de autorização em 1
+
+### Security
+- Correção de política RLS em `houston.user_roles` que permitia leitura não autorizada
+- Remoção de acesso público indevido ao bucket de documentos médicos
+- Proteção adicional em triggers de check-in/checkout para operações via service_role
+
+### Breaking Changes
+
+⚠️ **Mudanças que requerem atualização nos clients:**
+
+1. **Houston Web - Queries Diretas Bloqueadas:**
+   ```
+   ❌ ANTES: Queries diretas ao Supabase via anon key
+   ✅ DEPOIS: Todas as queries via API routes com service_role
+   ```
+
+2. **Funções de Autorização Removidas:**
+   ```sql
+   -- ❌ ANTES
+   houston.authorize_simple('vagas.select')
+   houston.group_authorization('grupos.update', grupo_id)
+
+   -- ✅ DEPOIS
+   houston.authorize('vagas.select')
+   houston.authorize('grupos.update', NULL, NULL, grupo_id)
+   ```
+
+3. **Nomenclatura de Colunas na View:**
+   ```sql
+   -- ❌ ANTES
+   SELECT vaga_periodo, vaga_tipo, vaga_formarecebimento FROM vw_vagas_candidaturas
+
+   -- ✅ DEPOIS
+   SELECT periodo_id, tipos_vaga_id, forma_recebimento_id FROM vw_vagas_candidaturas
+   ```
+
+4. **Coluna Renomeada em houston.user_roles:**
+   ```sql
+   -- ❌ ANTES
+   SELECT group_ids FROM houston.user_roles
+
+   -- ✅ DEPOIS
+   SELECT grupo_ids FROM houston.user_roles
+   ```
+
+### Migrations
+Total de 4 migrações nesta versão:
+1. `20251205171355` - Migração de RLS complexo para filtragem via JWT
+2. `20251206092405` - Padronização de schema e suporte para API routes
+3. `20251207035652` - Padronização completa da gestão de grupos
+4. `20251207213424` - Correção de vulnerabilidade na tabela user_roles
+
+---
+
 ## [2.2.0] - 2024-12-04
 
 ### Added
