@@ -748,7 +748,175 @@ CREATE POLICY "vagas_recorrencias_insert_policy" ON public.vagas_recorrencias
   WITH CHECK (houston.authorize('vagas.insert'::houston.app_permission));
 
 -- =====================================================================================
--- PARTE 7: Remover Políticas RLS que Usam Funções Wrapper
+-- PARTE 7: Atualizar Funções que Usam group_ids
+-- =====================================================================================
+-- Atualizar funções que ainda faziam referência à coluna antiga group_ids.
+-- Após renomear a coluna para grupo_ids, estas funções precisam ser atualizadas.
+--
+-- NOTA: A função criar_escalista_from_auth() foi descontinuada e substituída por
+-- create_user_from_auth() na migration 20251121171652. Portanto, atualizamos apenas
+-- a versão mais recente (create_user_from_auth).
+-- =====================================================================================
+
+-- 7.1 Atualizar função create_user_from_auth()
+-- Esta função é a versão atual que substitui criar_escalista_from_auth()
+-- Insere/atualiza registros na tabela houston.user_roles com grupo_ids
+
+-- Derrubar o trigger antes de atualizar a função
+DROP TRIGGER IF EXISTS users_1_criar_usuario ON auth.users;
+
+-- Derrubar a função antiga
+DROP FUNCTION IF EXISTS public.create_user_from_auth();
+
+CREATE OR REPLACE FUNCTION public.create_user_from_auth()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  user_phone varchar;
+  user_metadata jsonb;
+  display_name text;
+  group_id uuid;
+  platform_origin text;
+BEGIN
+  RAISE NOTICE 'TRIGGER DEBUG: create_user_from_auth() executada para usuário %', NEW.id;
+
+  user_metadata := COALESCE(NEW.raw_user_meta_data, '{}'::jsonb);
+  RAISE NOTICE 'TRIGGER DEBUG: Metadados do usuário: %', user_metadata;
+
+  -- Verificar platform_origin (suporta formato aninhado e direto)
+  platform_origin := COALESCE(
+    user_metadata->>'platform',
+    user_metadata->'data'->>'platform'
+  );
+
+  IF platform_origin = 'houston' THEN
+    RAISE NOTICE 'TRIGGER DEBUG: Usuário identificado como escalista (platform=houston)';
+
+    -- Extrair nome (suporta formato aninhado e direto, com fallback para email)
+    display_name := COALESCE(
+      user_metadata->'data'->>'display_name',
+      user_metadata->>'display_name',
+      user_metadata->'data'->>'name',
+      user_metadata->>'name',
+      split_part(NEW.email, '@', 1)
+    );
+
+    -- Extrair telefone (suporta formato aninhado e direto)
+    user_phone := COALESCE(
+      user_metadata->'data'->>'phone',
+      user_metadata->>'phone',
+      '(00) 00000-0000'
+    );
+
+    -- Extrair group_id de forma segura (suporta formato aninhado e direto)
+    -- Busca tanto 'group_id' (inglês) quanto 'grupo_id' (português) nos metadados
+    BEGIN
+      group_id := COALESCE(
+        (user_metadata->'data'->>'grupo_id')::uuid,
+        (user_metadata->>'grupo_id')::uuid,
+        (user_metadata->'data'->>'group_id')::uuid,
+        (user_metadata->>'group_id')::uuid,
+        NULL
+      );
+    EXCEPTION WHEN invalid_text_representation THEN
+      RAISE NOTICE 'TRIGGER DEBUG: grupo_id/group_id inválido para usuário %', NEW.id;
+      group_id := NULL;
+    END;
+
+    -- Criar escalista
+    INSERT INTO public.escalistas (
+      id,
+      nome,
+      telefone,
+      email,
+      grupo_id,
+      escalista_status,
+      created_at,
+      update_at,
+      update_by
+    )
+    VALUES (
+      NEW.id,
+      display_name,
+      user_phone,
+      NEW.email,
+      group_id,
+      CASE
+        WHEN NEW.email_confirmed_at IS NOT NULL THEN 'ativo'
+        ELSE 'pendente'
+      END,
+      NOW(),
+      NOW(),
+      NEW.id
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      nome = display_name,
+      telefone = user_phone,
+      email = NEW.email,
+      grupo_id = group_id,
+      update_at = NOW();
+
+    -- Adicionar role em houston.user_roles
+    -- ✅ CORRIGIDO: Usar grupo_ids em vez de group_ids
+    INSERT INTO houston.user_roles (
+      user_id,
+      role,
+      grupo_ids,
+      hospital_ids,
+      setor_ids
+    ) VALUES (
+      NEW.id,
+      'escalista',
+      CASE WHEN group_id IS NOT NULL THEN ARRAY[group_id] ELSE '{}'::uuid[] END,
+      '{}',
+      '{}'
+    )
+    ON CONFLICT (user_id, role) DO UPDATE SET
+      grupo_ids = CASE WHEN group_id IS NOT NULL THEN ARRAY[group_id] ELSE '{}'::uuid[] END;
+
+    RAISE NOTICE 'TRIGGER DEBUG: Escalista criado/atualizado com sucesso para usuário %', NEW.id;
+
+  ELSE
+    RAISE NOTICE 'TRIGGER DEBUG: Usuário % não é escalista (platform_origin não é houston)', NEW.id;
+
+    -- Usuário comum (app mobile) - mantém na user_profile
+    INSERT INTO public.user_profile (
+      id,
+      created_at,
+      updated_at,
+      role
+    ) VALUES (
+      NEW.id,
+      NOW(),
+      NOW(),
+      'medico'
+    )
+    ON CONFLICT (id) DO NOTHING;
+
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.create_user_from_auth IS
+'Trigger function unificada para criar usuários automaticamente quando inseridos em auth.users.
+
+COMPORTAMENTO:
+- Se platform=houston: cria registro em escalistas + houston.user_roles
+- Caso contrário: cria registro em user_profile (médicos do app mobile)
+
+ATUALIZADO (2025-12-07): Corrigido para usar grupo_ids (padrão português) em vez de group_ids.';
+
+-- Recriar o trigger
+CREATE TRIGGER users_1_criar_usuario
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.create_user_from_auth();
+
+-- =====================================================================================
+-- PARTE 8: Remover Políticas RLS que Usam Funções Wrapper
 -- =====================================================================================
 -- IMPORTANTE: Drop das políticas ANTES de dropar as funções wrapper.
 -- Estas políticas serão recriadas logo depois usando houston.authorize() diretamente.
@@ -767,7 +935,7 @@ DROP POLICY IF EXISTS "grupos_update_policy" ON public.grupos;
 DROP POLICY IF EXISTS "grupos_delete_policy" ON public.grupos;
 
 -- =====================================================================================
--- PARTE 8: Remover Funções Wrapper Obsoletas
+-- PARTE 9: Remover Funções Wrapper Obsoletas
 -- =====================================================================================
 -- IMPORTANTE: Agora que TODAS as políticas que usavam estas funções foram removidas,
 -- podemos dropar as funções com segurança.
@@ -783,13 +951,13 @@ DROP FUNCTION IF EXISTS houston.authorize_simple(houston.app_permission);
 DROP FUNCTION IF EXISTS houston.group_authorization(houston.app_permission, uuid);
 
 -- =====================================================================================
--- PARTE 9: Recriar Políticas RLS com houston.authorize()
+-- PARTE 10: Recriar Políticas RLS com houston.authorize()
 -- =====================================================================================
 -- Agora que as funções wrapper foram removidas, recriar as políticas usando
 -- houston.authorize() diretamente.
 -- =====================================================================================
 
--- 9.1 Políticas de HOUSTON.USER_ROLES
+-- 10.1 Políticas de HOUSTON.USER_ROLES
 CREATE POLICY "user_role_read_policy" ON houston.user_roles
   AS PERMISSIVE FOR SELECT
   TO authenticated
@@ -811,7 +979,7 @@ CREATE POLICY "user_role_delete_policy" ON houston.user_roles
   TO authenticated
   USING (houston.authorize('roles.delete'::houston.app_permission));
 
--- 9.2 Políticas de GRUPOS
+-- 10.2 Políticas de GRUPOS
 CREATE POLICY "grupos_select_policy" ON public.grupos
   FOR SELECT TO authenticated
   USING (
@@ -833,7 +1001,7 @@ CREATE POLICY "grupos_delete_policy" ON public.grupos
   USING (houston.authorize('grupos.delete'::houston.app_permission));
 
 -- =====================================================================================
--- PARTE 10: Documentação e Comentários Finais
+-- PARTE 11: Documentação e Comentários Finais
 -- =====================================================================================
 
 COMMENT ON FUNCTION houston.authorize IS
@@ -883,6 +1051,7 @@ contextos fornecidos.';
 -- ✅ Renomeada coluna: houston.user_roles.group_ids → grupo_ids
 -- ✅ Atualizada função: houston.authorize() para usar grupo_ids
 -- ✅ Atualizada função: houston.get_user_complete_data() para retornar grupo_ids
+-- ✅ Atualizada função: public.create_user_from_auth() para usar grupo_ids
 -- ✅ Atualizadas 10 políticas que usavam authorize_simple():
 --    • medicos, medicos_precadastro, vagas_recorrencias, houston.user_roles
 -- ✅ Atualizadas 4 políticas que usavam group_authorization():
@@ -890,7 +1059,11 @@ contextos fornecidos.';
 -- ✅ Removidas funções wrapper: authorize_simple() e group_authorization()
 -- ✅ Documentação completa da função consolidada
 --
--- TOTAL: 14 políticas RLS atualizadas + 2 funções removidas
+-- TOTAL: 14 políticas RLS atualizadas + 3 funções atualizadas + 2 funções removidas
+--
+-- NOTAS IMPORTANTES:
+-- • A função criar_escalista_from_auth() foi descontinuada na migration 20251121171652
+--   e substituída por create_user_from_auth(), por isso não foi incluída nesta correção.
 --
 -- BENEFÍCIOS:
 -- ✅ Nomenclatura padronizada em português ("grupo_ids")
