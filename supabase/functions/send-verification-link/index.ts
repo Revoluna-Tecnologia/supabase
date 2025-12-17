@@ -6,7 +6,7 @@ import * as crypto from 'https://deno.land/std@0.167.0/node/crypto.ts';
 import { emailTemplate } from './email-template.ts';
 
 function getEmailTemplate(verificationLink: string): string {
-  return emailTemplate.replace('{{VERIFICATION_LINK}}', verificationLink);
+  return emailTemplate.replace(/\{\{VERIFICATION_LINK\}\}/g, verificationLink);
 }
 
 const corsHeaders = {

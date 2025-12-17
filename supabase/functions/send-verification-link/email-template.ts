@@ -89,13 +89,21 @@ export const emailTemplate = `<!DOCTYPE html>
                                     </tr>
                                 <tr>
                                     <td align="center" style="padding-bottom: 20px;">
-                                        <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+                                        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="border-collapse: separate !important; border-radius: 30px; background-color: #9966FF;">
                                             <tr>
-                                                <td align="center" bgcolor="#9966FF" style="border-radius: 8px;">
-                                                    <a href="{{VERIFICATION_LINK}}" target="_blank" style="padding: 15px 40px; border-radius: 30px; color: #ffffff; display: inline-block; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-decoration: none;">ACESSAR O APP</a>
+                                                <td align="center" style="border-radius: 30px; background-color: #9966FF; padding: 15px 40px;">
+                                                    <a href="{{VERIFICATION_LINK}}" target="_blank" style="color: #ffffff; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-decoration: none; display: block; mso-line-height-rule: exactly;">ACESSAR O APP</a>
                                                 </td>
                                             </tr>
                                         </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 10px 20px; color: #666666; font-family: Arial, sans-serif; font-size: 13px; line-height: 18px; text-align: center;">
+                                        <p style="margin: 0 0 10px 0;">Caso o botão não funcione, copie e cole o link abaixo no seu navegador:</p>
+                                        <p style="margin: 0; word-break: break-all;">
+                                            <a href="{{VERIFICATION_LINK}}" target="_blank" style="color: #9966FF; text-decoration: underline;">{{VERIFICATION_LINK}}</a>
+                                        </p>
                                     </td>
                                 </tr>
                                 <tr>

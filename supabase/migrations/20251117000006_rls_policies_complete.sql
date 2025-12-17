@@ -1034,11 +1034,6 @@ USING (
   -- Políticas: usuário pode gerenciar sua própria pasta OU ter permissão RBAC
   -- =====================================================================================
 
-CREATE POLICY "carteira_digital_select_public"
-ON storage.objects FOR SELECT
-TO public
-USING (bucket_id = 'carteira-digital');
-
 CREATE POLICY "carteira_digital_insert"
 ON storage.objects FOR INSERT
 TO authenticated
