@@ -45,7 +45,7 @@ INSERT INTO houston.role_permissions (role, permission) VALUES
   ('gestor', 'pagamentos.select'),
   ('gestor', 'pagamentos.insert'),
   ('gestor', 'pagamentos.update'),
-
+  ('gestor', 'pagamentos.delete')
 ON CONFLICT DO NOTHING;
 
 -- Coordenador: SELECT, INSERT, UPDATE, DELETE (com UPDATE para autorizar pagamentos e bypass de checkin/checkout retroativo)
@@ -53,6 +53,7 @@ INSERT INTO houston.role_permissions (role, permission) VALUES
   ('coordenador', 'pagamentos.select'),
   ('coordenador', 'pagamentos.insert'),
   ('coordenador', 'pagamentos.update'),
+  ('coordenador', 'pagamentos.delete')
 ON CONFLICT DO NOTHING;
 
 -- Escalista: SELECT, INSERT only (NO UPDATE, NO DELETE)
