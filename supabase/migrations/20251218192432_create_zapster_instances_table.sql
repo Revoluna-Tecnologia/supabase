@@ -1,5 +1,6 @@
 -- Migration: create_zapster_instances_table
 -- Description: Tabela para armazenar instâncias Zapster por grupo
+-- Nota: Permissões controladas via API route, não via RLS
 
 -- Criar tabela de instâncias Zapster no schema houston
 CREATE TABLE houston.zapster_instances (
@@ -34,63 +35,11 @@ CREATE TRIGGER trigger_update_zapster_instances_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION houston.update_zapster_instances_updated_at();
 
--- Habilitar RLS
-ALTER TABLE houston.zapster_instances ENABLE ROW LEVEL SECURITY;
-
--- Policy: Usuários podem ver instância do seu grupo
-CREATE POLICY "Users can view their group instance"
-  ON houston.zapster_instances
-  FOR SELECT
-  USING (
-    grupo_id IN (
-      SELECT unnest(grupo_ids) FROM houston.user_roles WHERE user_id = auth.uid()
-    )
-  );
-
--- Policy: Gestores e Administradores podem inserir instância para seu grupo
-CREATE POLICY "Gestores can insert instances"
-  ON houston.zapster_instances
-  FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM houston.user_roles
-      WHERE user_id = auth.uid()
-      AND role IN ('gestor', 'administrador')
-      AND grupo_id = ANY(grupo_ids)
-    )
-  );
-
--- Policy: Gestores e Administradores podem atualizar instância do seu grupo
-CREATE POLICY "Gestores can update instances"
-  ON houston.zapster_instances
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM houston.user_roles
-      WHERE user_id = auth.uid()
-      AND role IN ('gestor', 'administrador')
-      AND grupo_id = ANY(grupo_ids)
-    )
-  );
-
--- Policy: Gestores e Administradores podem deletar instância do seu grupo
-CREATE POLICY "Gestores can delete instances"
-  ON houston.zapster_instances
-  FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM houston.user_roles
-      WHERE user_id = auth.uid()
-      AND role IN ('gestor', 'administrador')
-      AND grupo_id = ANY(grupo_ids)
-    )
-  );
-
-  -- Grants para permitir acesso via Supabase client
-GRANT SELECT, INSERT, UPDATE, DELETE ON houston.zapster_instances TO anon, authenticated;
+-- Grants para permitir acesso via Supabase client
+GRANT SELECT, INSERT, UPDATE, DELETE ON houston.zapster_instances TO authenticated;
 
 -- Comentários para documentação
-COMMENT ON TABLE houston.zapster_instances IS 'Armazena instâncias Zapster/WhatsApp por grupo';
+COMMENT ON TABLE houston.zapster_instances IS 'Armazena instâncias Zapster/WhatsApp por grupo. Permissões controladas via API route.';
 COMMENT ON COLUMN houston.zapster_instances.grupo_id IS 'ID do grupo que possui esta instância';
 COMMENT ON COLUMN houston.zapster_instances.zapster_instance_id IS 'ID da instância na API Zapster';
 COMMENT ON COLUMN houston.zapster_instances.instance_name IS 'Nome da instância (para identificação)';
