@@ -23,14 +23,15 @@ CREATE TABLE IF NOT EXISTS houston.chat_participants (
   conversation_id UUID NOT NULL REFERENCES houston.chat_conversations(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id),
   medico_id UUID REFERENCES public.medicos(id),
-  phone_number VARCHAR(20),  -- ALTERADO: Agora permite NULL para participantes internos
+  phone_number VARCHAR(20) NOT NULL,
   role VARCHAR(20) DEFAULT 'member' CHECK (role IN ('admin', 'member')),
   is_muted BOOLEAN DEFAULT FALSE,
   joined_at TIMESTAMPTZ DEFAULT NOW(),
   left_at TIMESTAMPTZ,
   last_read_at TIMESTAMPTZ,
-  unread_count INTEGER DEFAULT 0
-  -- REMOVIDO: UNIQUE(conversation_id, phone_number) - substituído por índices parciais
+  unread_count INTEGER DEFAULT 0,
+  
+  UNIQUE(conversation_id, phone_number)
 );
 
 -- 3. Tabela de Mensagens
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS houston.chat_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id UUID NOT NULL REFERENCES houston.chat_conversations(id) ON DELETE CASCADE,
   sender_id UUID REFERENCES auth.users(id),
-  sender_phone VARCHAR(20),  -- ALTERADO: Agora permite NULL para mensagens internas
+  sender_phone VARCHAR(20) NOT NULL,
   content TEXT,
   message_type VARCHAR(30) DEFAULT 'text' CHECK (message_type IN (
   'text', 'image', 'audio', 'video', 'file', 'document', 'location', 
@@ -105,15 +106,6 @@ CREATE INDEX IF NOT EXISTS idx_chat_participants_conversation ON houston.chat_pa
 CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON houston.chat_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_participants_medico ON houston.chat_participants(medico_id);
 CREATE INDEX IF NOT EXISTS idx_chat_participants_phone ON houston.chat_participants(phone_number);
-
--- NOVO: Índices únicos parciais para chat_participants (permitem NULLs)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_participants_conv_phone 
-ON houston.chat_participants(conversation_id, phone_number)
-WHERE phone_number IS NOT NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_participants_conv_user 
-ON houston.chat_participants(conversation_id, user_id)
-WHERE user_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON houston.chat_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON houston.chat_messages(sender_id);
@@ -319,7 +311,7 @@ CREATE TRIGGER increment_unread_on_new_message
 ALTER PUBLICATION supabase_realtime ADD TABLE houston.chat_messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE houston.chat_conversations;
 ALTER PUBLICATION supabase_realtime ADD TABLE houston.chat_shift_offers;
-ALTER PUBLICATION supabase_realtime ADD TABLE houston.chat_participants;  -- NOVO: Para atualizar badge em tempo real
+
 
 -- ============================================
 -- STORAGE BUCKET PARA ARQUIVOS DO CHAT

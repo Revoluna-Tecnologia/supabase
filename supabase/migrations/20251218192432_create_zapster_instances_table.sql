@@ -1,5 +1,5 @@
 -- Migration: create_zapster_instances_table
--- Description: Tabela para armazenar instâncias Zapster por grupo + campo grupo_id em chat_conversations
+-- Description: Tabela para armazenar instâncias Zapster por grupo
 -- Nota: Permissões controladas via API route, não via RLS
 
 -- Criar tabela de instâncias Zapster no schema houston
@@ -46,17 +46,3 @@ COMMENT ON COLUMN houston.zapster_instances.instance_name IS 'Nome da instância
 COMMENT ON COLUMN houston.zapster_instances.status IS 'Status da conexão: connected, disconnected, offline';
 COMMENT ON COLUMN houston.zapster_instances.phone_number IS 'Número de telefone conectado à instância';
 COMMENT ON COLUMN houston.zapster_instances.metadata IS 'Metadados adicionais da instância Zapster';
-
--- =============================================================================
--- ADICIONAR grupo_id NA TABELA chat_conversations
--- =============================================================================
-
--- Adicionar coluna grupo_id para isolar conversas por grupo
-ALTER TABLE houston.chat_conversations 
-ADD COLUMN grupo_id UUID REFERENCES public.grupos(id) ON DELETE CASCADE;
-
--- Índice para busca por grupo
-CREATE INDEX idx_chat_conversations_grupo_id ON houston.chat_conversations(grupo_id);
-
--- Comentário
-COMMENT ON COLUMN houston.chat_conversations.grupo_id IS 'ID do grupo ao qual esta conversa pertence (para isolamento por instância WhatsApp)';
