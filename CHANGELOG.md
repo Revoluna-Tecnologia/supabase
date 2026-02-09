@@ -7,6 +7,63 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [2.4.0] - 2026-01-19
+
+### Added
+
+#### Sistema de Chat (Schema Houston)
+- **Tabelas de Chat Completas:**
+  - `houston.chat_conversations` - Conversas (direct ou group)
+  - `houston.chat_participants` - Participantes das conversas
+  - `houston.chat_messages` - Mensagens com suporte a múltiplos tipos
+  - `houston.chat_shift_offers` - Ofertas de plantão via chat
+  - `houston.chat_contacts` - Agenda pessoal de contatos
+- **Tipos de Mensagem Suportados:** text, image, audio, video, file, document, location, shift_offer, shift_response, system, sticker, contact, interactive, template
+- **Realtime:** Tabelas `chat_messages`, `chat_conversations`, `chat_shift_offers` e `chat_participants` adicionadas ao Realtime
+- **Storage Bucket:** `chat-files` para arquivos de mídia (50MB, múltiplos formatos)
+- Triggers automáticos para `updated_at`, `last_message` e contador de mensagens não lidas
+
+#### Instâncias Zapster por Grupo
+- **Tabela `houston.zapster_instances`:** Gerenciamento de instâncias WhatsApp por grupo
+- Suporte a status de conexão (connected, disconnected, offline)
+- Metadados flexíveis via JSONB
+- Constraint de uma instância por grupo (`unique_grupo_instance`)
+
+#### Novas Permissões
+- Permissão `pagamentos.delete` adicionada para roles `gestor` e `coordenador`
+
+### Changed
+- Coluna `grupo_id` adicionada à tabela `chat_conversations` para isolamento por instância WhatsApp
+- Colunas `phone_number` (chat_participants) e `sender_phone` (chat_messages) agora permitem NULL para mensagens internas
+
+### Fixed
+- **FK `grades.updated_by`:** Alterada para `ON DELETE SET NULL`, permitindo deleção de usuários sem bloqueio por referência
+
+### Performance
+- **Otimização da view `vw_vagas_candidaturas`:**
+  - Refatoração da função `pode_ver_candidatura_colega` → `filtrar_candidaturas`
+  - Marcador `STABLE` para caching dentro da mesma query
+  - `LIMIT 1` em EXISTS para parar na primeira correspondência
+  - **Resultado:** Queries de 8s+ reduzidas para ~100ms
+- **Novos índices de suporte:**
+  - `idx_candidaturas_medico_status`
+  - `idx_candidaturas_status_vaga`
+  - `idx_vagas_hospital_setor`
+
+### Security
+- RLS completo implementado nas tabelas de chat
+- Políticas específicas por ação (SELECT, INSERT, UPDATE, DELETE)
+
+### Migrations
+Total de 5 migrações nesta versão:
+1. `20251205150955` - Criação das tabelas de chat no schema Houston
+2. `20260116141549` - Correção da FK grades.updated_by para ON DELETE SET NULL
+3. `20260116181649` - Criação da tabela zapster_instances
+4. `20260116181650` - Ajustes nas tabelas de chat e adição de grupo_id em conversas
+5. `20260119161148` - Otimização de performance da view vw_vagas_candidaturas
+
+---
+
 ## [2.3.1] - 2024-12-08
 
 ### Fixed
