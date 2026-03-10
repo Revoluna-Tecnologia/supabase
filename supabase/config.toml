@@ -269,6 +269,10 @@ verify_jwt = false
 [functions.manutencao-diaria-vagas]
 verify_jwt = true
 
+# Sync com Julia Worker (API Key auth)
+[functions.julia-sync]
+verify_jwt = false
+
 # =========================================================================
 # ANALYTICS
 # =========================================================================
