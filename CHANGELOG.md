@@ -7,7 +7,47 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [2.3.1] - 2024-12-08
+## [2.4.0] - 2026-03-16
+
+### Added
+- Suporte inicial à integração de vagas externas do Julia
+  - Criação de registros fallback para grupo `Vagas Externas (Julia)` e setor `Não informado`
+  - Nova tabela `escalistas_externos` para contatos sem vínculo com `auth.users`
+  - Tabelas de controle de sincronização `vagas_sync_julia`, `sync_especialidades_map`, `sync_periodos_map` e `sync_setores_map`
+
+### Changed
+- Suporte a escalistas externos na tabela `vagas`
+  - Nova coluna `escalista_externo_id`
+  - `escalista_id` passou a aceitar `NULL` para vagas vindas do Julia
+- Atualização da view `vw_vagas_abertas`
+  - Passa a exibir nome e telefone de `escalistas_externos` quando não houver escalista autenticado
+- Flexibilização das constraints de valor
+  - `vagas.valor` agora permite `0`
+  - `candidaturas.vaga_valor` agora permite `0`
+
+### Fixed
+- Correção das políticas RLS da tabela `candidaturas`
+  - Restaurado o acesso de médicos e pré-cadastros às próprias candidaturas no `SELECT`
+  - Mantida a leitura de candidaturas de colegas via `pode_ver_candidatura_colega()`
+  - Restrição da policy de `UPDATE` para impedir atualização de candidaturas de terceiros
+
+### Security
+- RLS habilitado nas tabelas de integração do Julia
+  - `escalistas_externos` com leitura para usuários autenticados
+  - Tabelas de sync restritas a `service_role`
+
+### Migrations
+Total de 6 migrações nesta seção:
+1. `20260310000001` - Registros fallback para integração Julia
+2. `20260310000002` - Tabela `escalistas_externos`
+3. `20260310000003` - Tabelas de controle de sync do Julia
+4. `20260310000004` - Suporte a `escalista_externo_id` em vagas e na view `vw_vagas_abertas`
+5. `20260310000005` - Permissão para valor zero em vagas e candidaturas
+6. `20260316172608` - Correção das políticas RLS de candidaturas
+
+---
+
+## [2.3.1] - 2025-12-08
 
 ### Fixed
 - Correção da função `create_user_from_auth()` que falhava ao criar usuários médicos do app mobile
@@ -33,7 +73,7 @@ Total de 3 migrações nesta versão:
 
 ---
 
-## [2.3.0] - 2024-12-08
+## [2.3.0] - 2026-12-08
 
 ### Added
 - Enriquecimento do JWT com `grupo_ids` para filtragem multi-tenant nas API routes
@@ -131,7 +171,7 @@ Total de 4 migrações nesta versão:
 
 ---
 
-## [2.2.0] - 2024-12-04
+## [2.2.0] - 2025-12-04
 
 ### Added
 - Sistema de pagamentos completo integrado ao RBAC
@@ -173,7 +213,7 @@ Total de 4 migrações nesta versão:
 
 ---
 
-## [2.1.0] - 2024-11-28
+## [2.1.0] - 2025-11-28
 
 ### Added
 - Coluna `ordem` à tabela `grades` para controle de exibição customizado
@@ -216,7 +256,7 @@ Total de 4 migrações nesta versão:
 
 ---
 
-## [2.0.0] - 2024-11-21
+## [2.0.0] - 2025-11-21
 
 ### Refatoração Arquitetural Completa
 
