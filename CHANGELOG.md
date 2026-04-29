@@ -7,6 +7,19 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [2.4.1] - 2026-03-23
+
+### Fixed
+- Otimização da view `vw_vagas_candidaturas` para retornar resultados filtrados corretamente
+- FK `grupo_id` em `escalistas_externos` alterada para `ON DELETE CASCADE`
+
+### Migrations
+Total de 2 migrações nesta versão:
+1. `20260317200000` - Otimização da view `vw_vagas_candidaturas`
+2. `20260317200001` - FK `grupo_id` de `escalistas_externos` em CASCADE
+
+---
+
 ## [2.4.0] - 2026-03-16
 
 ### Added
