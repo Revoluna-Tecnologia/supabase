@@ -122,6 +122,35 @@ Deno.serve(async (req) => {
       }
 
       // ============================================
+      // 5b. find_escalistas_bulk - Busca multiplos telefones
+      // ============================================
+      case "find_escalistas_bulk": {
+        const { telefones = [] } = data as { telefones?: string[] };
+        if (!Array.isArray(telefones)) {
+          return json({ error: "find_escalistas_bulk: 'telefones' must be an array" }, 400);
+        }
+        if (telefones.length === 0) return json({ found: {} });
+        if (telefones.length > 1000) {
+          return json(
+            { error: `find_escalistas_bulk: max 1000 telefones, got ${telefones.length}` },
+            400
+          );
+        }
+
+        const { data: rows, error } = await supabase
+          .from("escalistas_externos")
+          .select("id, telefone")
+          .in("telefone", telefones);
+        if (error) return json({ error: error.message }, 500);
+
+        const found: Record<string, string> = {};
+        for (const row of rows ?? []) {
+          if (row.telefone) found[row.telefone] = row.id;
+        }
+        return json({ found });
+      }
+
+      // ============================================
       // 6. create_escalista - Cria escalista externo
       // ============================================
       case "create_escalista": {
@@ -170,21 +199,109 @@ Deno.serve(async (req) => {
       // ============================================
       case "close_vaga": {
         const { id } = data as { id: string };
-        const { error } = await supabase
+        if (!id) return json({ error: "close_vaga: missing 'id'" }, 400);
+
+        const { data: existing, error: selectError } = await supabase
           .from("vagas")
-          .update({ status: "fechada" })
-          .eq("id", id);
-        if (error) return json({ error: error.message }, 500);
-        return json({ ok: true });
+          .select("id, status")
+          .eq("id", id)
+          .single();
+        if (selectError) return json({ error: selectError.message }, 500);
+
+        const alreadyClosed = existing.status === "fechada";
+        if (!alreadyClosed) {
+          const { error: updateError } = await supabase
+            .from("vagas")
+            .update({ status: "fechada", updated_at: new Date().toISOString() })
+            .eq("id", id);
+          if (updateError) return json({ error: updateError.message }, 500);
+        }
+
+        const { error: syncError } = await supabase
+          .from("vagas_sync_julia")
+          .update({ closed_at: new Date().toISOString() })
+          .eq("app_vaga_id", id)
+          .is("closed_at", null);
+        if (syncError) return json({ error: syncError.message }, 500);
+
+        return json({ ok: true, already_closed: alreadyClosed });
+      }
+
+      // ============================================
+      // 9b. close_vagas_bulk - Fecha vagas em lote
+      // ============================================
+      case "close_vagas_bulk": {
+        const { ids = [] } = data as { ids?: string[] };
+        if (!Array.isArray(ids)) {
+          return json({ error: "close_vagas_bulk: 'ids' must be an array" }, 400);
+        }
+        if (ids.length === 0) {
+          return json({ ok: true, closed: 0, already_closed: 0, failed: [] });
+        }
+        if (ids.length > 500) {
+          return json({ error: `close_vagas_bulk: max 500 ids per call, got ${ids.length}` }, 400);
+        }
+
+        const uniqueIds = [...new Set(ids)];
+        const { data: existingRows, error: selectError } = await supabase
+          .from("vagas")
+          .select("id, status")
+          .in("id", uniqueIds);
+        if (selectError) {
+          return json({ ok: false, closed: 0, already_closed: 0, failed: ids }, 500);
+        }
+
+        const existingById = new Map((existingRows ?? []).map((row) => [row.id, row.status]));
+        const failed = uniqueIds.filter((id) => !existingById.has(id));
+        const idsToClose = uniqueIds.filter((id) => existingById.get(id) !== "fechada");
+        const alreadyClosed = uniqueIds.filter((id) => existingById.get(id) === "fechada").length;
+
+        let closedNow = 0;
+        if (idsToClose.length > 0) {
+          const { data: updatedRows, error: updateError } = await supabase
+            .from("vagas")
+            .update({ status: "fechada", updated_at: new Date().toISOString() })
+            .in("id", idsToClose)
+            .neq("status", "fechada")
+            .select("id");
+          if (updateError) {
+            return json({ ok: false, closed: 0, already_closed: alreadyClosed, failed: ids }, 500);
+          }
+          closedNow = updatedRows?.length ?? 0;
+        }
+
+        const existingIds = uniqueIds.filter((id) => existingById.has(id));
+        if (existingIds.length > 0) {
+          const { error: syncError } = await supabase
+            .from("vagas_sync_julia")
+            .update({ closed_at: new Date().toISOString() })
+            .in("app_vaga_id", existingIds)
+            .is("closed_at", null);
+          if (syncError) {
+            return json({ ok: false, closed: closedNow, already_closed: alreadyClosed, failed: ids }, 500);
+          }
+        }
+
+        return json({
+          ok: failed.length === 0,
+          closed: closedNow,
+          already_closed: alreadyClosed,
+          failed,
+        });
       }
 
       // ============================================
       // 10. get_sync_state - Retorna estado do sync
       // ============================================
       case "get_sync_state": {
-        const { data: syncs } = await supabase
+        const { include_closed = false } = data as { include_closed?: boolean };
+        let query = supabase
           .from("vagas_sync_julia")
           .select("julia_vaga_id, app_vaga_id, source_hash");
+        if (!include_closed) query = query.is("closed_at", null);
+
+        const { data: syncs, error } = await query;
+        if (error) return json({ error: error.message }, 500);
         return json({ syncs: syncs ?? [] });
       }
 
