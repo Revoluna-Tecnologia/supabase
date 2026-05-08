@@ -7,6 +7,38 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
+## [2.4.2] - 2026-05-07
+
+### Added
+- Coluna `closed_at` em `vagas_sync_julia` para rastrear vagas sincronizadas já fechadas
+- Índice parcial para acelerar consultas de sync em linhas abertas (`closed_at IS NULL`)
+- Operações em lote na Edge Function `julia-sync`
+  - `close_vagas_bulk` para fechar até 500 vagas por chamada
+  - `find_escalistas_bulk` para buscar até 1000 telefones por chamada
+
+### Changed
+- Edge Function `julia-sync`
+  - `get_sync_state` passa a retornar apenas syncs abertos por padrão
+  - `get_sync_state` aceita `include_closed` para consultas administrativas
+  - `close_vaga` passa a ser idempotente e retorna `already_closed`
+  - `close_vaga` sempre marca `vagas_sync_julia.closed_at` quando a vaga é fechada
+
+### Fixed
+- Backfill de `closed_at` para vagas sincronizadas que já estavam com status `fechada`
+- Suporte a `escalistas_externos` na view `vw_vagas_candidaturas`
+
+### Performance
+- Redução do volume de sync reprocessado pelo worker Julia ao filtrar vagas já fechadas
+- Redução de chamadas repetidas a Edge Function com suporte a operações em lote
+
+### Migrations
+Total de 3 migrações nesta versão:
+1. `20260507000001` - Adiciona `closed_at` ao sync da Julia
+2. `20260507000002` - Preenche `closed_at` das vagas sincronizadas fechadas
+3. `20260507000003` - Exibe escalistas externos na view `vw_vagas_candidaturas`
+
+---
+
 ## [2.4.1] - 2026-03-23
 
 ### Fixed
